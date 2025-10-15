@@ -1,0 +1,71 @@
+# Airflow
+logs/
+airflow.db
+airflow.cfg
+airflow-webserver.pid
+standalone_admin_password.txt
+webserver_config.py
+*.log
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Docker
+docker-compose.override.yml
+
+# Data (exclude large data files, keep structure)
+data/*.csv
+data/*.parquet
+data/*.json
+!data/.gitkeep
+
+# Airflow plugins
+plugins/__pycache__/
+
+# Temporary files
+*.tmp
+.cache/
