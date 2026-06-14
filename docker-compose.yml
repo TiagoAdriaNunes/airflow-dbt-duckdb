@@ -17,8 +17,10 @@ x-airflow-common:
     AIRFLOW__OPENLINEAGE__DISABLED: 'true'
     # Use memory:// URI to satisfy flask-limiter and silence the warning
     RATELIMIT_STORAGE_URI: 'memory://'
-    # DuckDB warehouse path
-    DUCKDB_WAREHOUSE_PATH: /opt/warehouse/warehouse.duckdb
+    # DuckLake catalog: PostgreSQL as the metadata store (supports multiple concurrent clients)
+    DUCKLAKE_CATALOG_CONN: "postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow"
+    # Parquet data files are stored here inside the shared warehouse volume
+    DUCKLAKE_DATA_PATH: /opt/warehouse/data
     # Tell dbt to use the 'dev' target inside Docker (profiles.yml default is 'local')
     DBT_TARGET: dev
     # Tell dbt where to find profiles.yml (mounted at /opt/airflow/dbt/)
@@ -49,6 +51,7 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
+      - ./docker/init-ducklake-db.sql:/docker-entrypoint-initdb.d/init-ducklake-db.sql
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s

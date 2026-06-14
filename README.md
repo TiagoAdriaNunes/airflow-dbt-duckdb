@@ -1,262 +1,281 @@
 # airflow-dbt-duckdb
 
-Modern data pipeline orchestration using Apache Airflow, dbt, and DuckDB. This project demonstrates how to build a lightweight, portable analytics stack that runs entirely in containers.
+A lightweight, fully containerised analytics stack: Apache Airflow orchestrates a TPC-H benchmark pipeline that loads raw data into **DuckLake**, then runs dbt transformations to produce analytics-ready tables — all running locally via Docker Compose.
 
-## Overview
+## Tech Stack
 
-This repository provides a complete setup for running dbt transformations on DuckDB, orchestrated by Apache Airflow using Astronomer Cosmos.
+| Tool | Version | Role |
+|------|---------|------|
+| Apache Airflow | 2.10 | Pipeline orchestration |
+| dbt | 1.9 | SQL transformations |
+| DuckDB + DuckLake | 1.3 | Analytical engine + open table format |
+| Astronomer Cosmos | latest | dbt ↔ Airflow integration |
+| Docker Compose | — | Local environment |
 
-### Tech Stack
+---
 
-- **Apache Airflow 2.10.0**: Workflow orchestration
-- **dbt 1.8.0**: SQL-based data transformations
-- **DuckDB**: In-process analytical database
-- **Astronomer Cosmos**: dbt + Airflow integration
-- **Docker Compose**: Local development environment
+## How It Works
+
+### Storage: PostgreSQL catalog + Parquet data
+
+```
+PostgreSQL (airflow DB container)
+└── ducklake_catalog        ← DuckLake metadata: schema, transaction log, file registry
+
+/opt/warehouse/data/        (shared Docker volume)
+└── *.parquet               ← Parquet data files (actual table rows)
+```
+
+**DuckLake** is an open table format that separates metadata from data. The PostgreSQL database (`ducklake_catalog`) tracks schema and transactions; all row data lives as Parquet files on disk. Using PostgreSQL as the catalog (instead of a `.duckdb` file) allows multiple concurrent clients — enabling parallel dbt model execution across Cosmos tasks.
+
+Any DuckDB process attaches the lakehouse with:
+
+```sql
+LOAD ducklake; LOAD postgres;
+ATTACH 'ducklake:postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow'
+    AS lakehouse;
+```
+
+This gives a `lakehouse` catalog with three schemas:
+
+| Schema | Contents | Materialization |
+|--------|----------|-----------------|
+| `lakehouse.raw` | TPC-H source tables (customer, orders, lineitem, …) | DuckLake tables |
+| `lakehouse.staging` | Cleaned/typed views over raw | dbt views |
+| `lakehouse.marts` | Analytics aggregates | dbt tables |
+
+---
+
+### Pipeline: Airflow DAG
+
+The `dbt_analytics_pipeline` DAG runs `@daily`:
+
+```
+start → init_tpch → dbt_run (Cosmos task group) → end
+              │              │
+              │    stg_customers ──┐
+              │    stg_orders    ──┼─→ customer_orders
+              │    stg_lineitem ──┘    order_revenue
+              │
+       Generates TPC-H sf=1 (~1 GB) via dbgen,
+       writes 8 tables into lakehouse.raw.
+       Idempotent — skips if data already exists.
+```
+
+Cosmos automatically creates one Airflow task per dbt model, giving you task-level retries and lineage in the Airflow UI.
+
+---
+
+### dbt Models
+
+**Staging** (`dbt/models/staging/`) — views, no storage cost:
+- `stg_customers` — typed customer records from `raw.customer`
+- `stg_orders` — cleaned order records from `raw.orders`
+- `stg_lineitem` — line-item detail from `raw.lineitem`
+
+**Marts** (`dbt/models/marts/`) — materialised tables:
+- `customer_orders` — per-customer aggregates: total orders, spend, open vs. fulfilled counts, first/last order date
+- `order_revenue` — per-order revenue: list price, net revenue after returns, return rate
+
+---
 
 ## Repository Structure
 
 ```
 airflow-dbt-duckdb/
-├── dags/                       # Airflow DAG definitions
-│   ├── dbt_analytics_dag.py   # Cosmos-based dbt DAG
-│   └── simple_dbt_dag.py      # BashOperator-based alternative
-├── dbt/                        # dbt project
+├── dags/
+│   ├── dbt_analytics_dag.py    # Main DAG: init_tpch → Cosmos dbt task group
+│   └── simple_dbt_dag.py       # Alternative: BashOperator-based dbt run
+├── dbt/
 │   ├── models/
-│   │   ├── staging/           # Staging models (views)
-│   │   └── marts/             # Analytics models (tables)
-│   ├── seeds/                 # CSV seed files
-│   ├── tests/                 # Custom data tests
-│   ├── macros/                # SQL macros
-│   ├── dbt_project.yml        # dbt project configuration
-│   ├── profiles.yml           # DuckDB connection profile
-│   └── packages.yml           # dbt package dependencies
-├── docker/                     # Docker configuration
-│   └── Dockerfile             # Extended Airflow image
-├── data/                       # Raw data files
-├── include/                    # Additional SQL/templates
-├── docker-compose.yml          # Docker services definition
-├── requirements.txt            # Python dependencies
-├── Makefile                    # Common commands
-├── .env.example               # Environment variable template
-└── README.md                   # This file
+│   │   ├── staging/            # Views over lakehouse.raw
+│   │   └── marts/              # Analytics tables in lakehouse.marts
+│   ├── macros/
+│   │   ├── generate_schema_name.sql  # Use custom schema names as-is (no prefix)
+│   │   └── drop_relation.sql         # DuckLake-safe DROP (no CASCADE)
+│   ├── seeds/                  # CSV seed data (raw_customers, raw_orders)
+│   ├── dbt_project.yml
+│   ├── profiles.yml            # DuckDB/DuckLake connection (local / dev / prod)
+│   └── packages.yml
+├── scripts/
+│   ├── init_tpch.py            # Generates TPC-H data into lakehouse.raw
+│   └── query_duckdb.py         # CLI query tool for the lakehouse catalog
+├── docker/
+│   └── Dockerfile
+├── docker-compose.yml
+├── Makefile
+└── .env.example
 ```
+
+---
 
 ## Quick Start
 
 ### Prerequisites
 
-- Docker and Docker Compose installed
-- At least 4GB of available RAM
-- Git
+- Docker and Docker Compose
+- 6 GB free disk (TPC-H sf=1 ≈ 1 GB raw, plus Airflow overhead)
+- 4 GB available RAM
 
 ### Setup
 
-1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/airflow-dbt-duckdb.git
 cd airflow-dbt-duckdb
-```
 
-2. Create environment file:
-```bash
 cp .env.example .env
+make init   # one-time Airflow DB init
+make up     # start webserver + scheduler
 ```
 
-3. Initialize Airflow:
-```bash
-make init
-```
-
-4. Start the services:
-```bash
-make up
-```
-
-5. Access the Airflow UI:
-   - URL: http://localhost:8080
-   - Username: `airflow`
-   - Password: `airflow`
+Open **http://localhost:8080** (user: `airflow`, password: `airflow`).
 
 ### Running the Pipeline
 
-Once Airflow is running:
+1. Enable the `dbt_analytics_pipeline` DAG in the UI
+2. Click **Trigger DAG**
+3. `init_tpch` runs first (~2 min to generate 1 GB of TPC-H data), then dbt models run
 
-1. Navigate to http://localhost:8080
-2. Enable the `dbt_analytics_pipeline` DAG
-3. Trigger a manual run using the play button
+Or trigger dbt manually without Airflow:
 
-The DAG will:
-- Run dbt seed to load sample data
-- Execute staging models (views)
-- Build marts models (tables)
-- Run all dbt tests
+```bash
+make dbt-run    # run all 5 models against lakehouse
+make dbt-test   # run data quality tests
+```
 
-## Project Components
+---
 
-### dbt Models
+## Makefile Reference
 
-#### Staging Layer (`dbt/models/staging/`)
-- `stg_customers.sql`: Clean customer data from seeds
-- `stg_orders.sql`: Clean order data from seeds
+### Services
 
-#### Marts Layer (`dbt/models/marts/`)
-- `customer_orders.sql`: Aggregated customer analytics with order metrics
+```bash
+make init            # One-time Airflow initialisation
+make up              # Start webserver + scheduler
+make down            # Stop all services
+make restart         # down + up
+make logs            # Tail all container logs
+make logs-scheduler  # Tail scheduler logs only
+make clean           # Remove containers, volumes, and generated files
+make rebuild         # Rebuild Docker image and restart
+```
 
-### Airflow DAGs
+### dbt
 
-#### `dbt_analytics_dag.py` (Recommended)
-Uses Astronomer Cosmos to automatically generate Airflow tasks from dbt models. Provides:
-- Automatic task dependency resolution
-- Task-level retries and monitoring
-- Full lineage visibility in Airflow UI
+```bash
+make dbt-run          # Run all models (writes to lakehouse.marts + lakehouse.staging)
+make dbt-test         # Run all data quality tests
+make dbt-seed         # Load CSV seeds into dbt.duckdb
+make dbt-build        # deps + seed + run + test in one shot
+make dbt-debug        # Test dbt connection
+make dbt-deps         # Install dbt packages
+make dbt-docs-generate  # Generate dbt documentation site
+make dbt-docs-serve     # Serve docs at http://localhost:8081
+```
 
-#### `simple_dbt_dag.py` (Alternative)
-Uses BashOperator to run dbt commands directly. Useful for:
-- Understanding dbt CLI commands
-- Simple pipelines without Cosmos dependency
-- Custom dbt command sequences
+### Querying the Lakehouse
 
-### DuckDB Configuration
+```bash
+make lh-tables    # List all schemas and tables in the lakehouse
+make lh-stats     # Order statistics (count, revenue, avg customer value)
+make lh-orders    # Top 20 customers by spend
+make lh-recent    # 10 most recent orders
+make lh-revenue   # Net revenue by market segment
 
-The DuckDB warehouse file is stored at `/opt/warehouse/warehouse.duckdb` in a shared Docker volume. This ensures:
-- Data persistence across container restarts
-- Shared access between Airflow tasks
-- Easy backup and portability
+# Run any SQL directly
+make lh-query SQL="SELECT * FROM lakehouse.marts.customer_orders LIMIT 5"
 
-**Important**: DuckDB supports concurrent reads but serialize write operations to avoid locking issues.
+# Interactive DuckDB shell attached to the lakehouse catalog
+make lh-cli
+```
+
+---
 
 ## Development
 
-### Adding New dbt Models
+### Environment Variables
 
-1. Create a new `.sql` file in `dbt/models/staging/` or `dbt/models/marts/`
-2. Add model documentation in the corresponding `schema.yml`
-3. Test locally with dbt CLI:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DUCKLAKE_CATALOG_CONN` | `postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow` | DuckLake PostgreSQL catalog connection string |
+| `DUCKLAKE_DATA_PATH` | `/opt/warehouse/data` | Directory for Parquet data files (used only on first `ATTACH`) |
+
+These are set in `docker-compose.yml` and consumed by `init_tpch.py`, `query_duckdb.py`, and `dbt/profiles.yml`.
+
+---
+
+### Adding a New dbt Model
+
+1. Create `dbt/models/marts/my_model.sql`
+2. Add documentation and tests in `dbt/models/marts/schema.yml`
+3. Run and test:
+
 ```bash
 make dbt-run
-```
-
-### Testing dbt Models
-
-Run all tests:
-```bash
 make dbt-test
 ```
 
-Run specific model tests:
-```bash
-docker exec -it airflow-dbt-duckdb-airflow-webserver-1 \
-  bash -c "cd /opt/airflow/dbt && dbt test --select stg_customers"
-```
-
-### Accessing the DuckDB Database
-
-Query the warehouse directly:
-```bash
-make duckdb-cli
-```
-
-Or from within the container:
-```bash
-docker exec -it airflow-dbt-duckdb-airflow-webserver-1 \
-  duckdb /opt/warehouse/warehouse.duckdb
-```
-
-## Makefile Commands
+### Running a Specific dbt Model
 
 ```bash
-make init          # Initialize Airflow (first time only)
-make up            # Start all services
-make down          # Stop all services
-make restart       # Restart all services
-make logs          # View logs
-make dbt-run       # Run dbt models
-make dbt-test      # Run dbt tests
-make dbt-debug     # Debug dbt connection
-make duckdb-cli    # Open DuckDB CLI
-make clean         # Clean up volumes and containers
+docker compose exec airflow-scheduler bash -c \
+  "cd /opt/airflow/dbt && DBT_PROFILES_DIR=/opt/airflow/dbt DBT_TARGET=dev \
+   /opt/dbt-venv/bin/dbt run --select customer_orders"
 ```
 
-## Configuration
+### Resetting the Lakehouse
 
-### Airflow Settings
+To wipe DuckLake data and start fresh (e.g., to re-run `init_tpch`):
 
-Key environment variables in `docker-compose.yml`:
-- `AIRFLOW__CORE__EXECUTOR`: Set to `LocalExecutor`
-- `AIRFLOW__CORE__LOAD_EXAMPLES`: Set to `false`
-- `DUCKDB_WAREHOUSE_PATH`: Path to DuckDB file
-
-### dbt Profile
-
-The dbt profile (`dbt/profiles.yml`) configures DuckDB connection:
-```yaml
-analytics:
-  target: dev
-  outputs:
-    dev:
-      type: duckdb
-      path: '/opt/warehouse/warehouse.duckdb'
-      threads: 4
+```bash
+make down
+docker volume rm airflow-dbt-duckdb_warehouse airflow-dbt-duckdb_postgres-db-volume
+make init && make up
+# Trigger the DAG — init_tpch will recreate ducklake_catalog and regenerate all data
 ```
+
+---
 
 ## Troubleshooting
 
+### `make dbt-run` fails with "schema does not exist"
+The `generate_schema_name` macro (`dbt/macros/`) ensures models land in `lakehouse.marts` and `lakehouse.staging` — not `marts_marts`/`marts_staging`. If you see this after a fresh clone, run `make dbt-run` once to create the schemas.
+
+### `make dbt-run` fails with "Cascade Drop not supported in DuckLake"
+The `drop_relation` macro (`dbt/macros/`) handles this. If you're seeing it, check that the macro file is present and that Docker has the latest volume-mounted `dbt/` directory.
+
+### DuckDB locked / stale lock file
+dbt now uses `:memory:` as its connection, so no `.duckdb` file lock can occur. If you see a lock error from a manual `duckdb` CLI session:
+```bash
+make lh-clear-lock   # removes stale lock on dbt.duckdb if still present
+```
+
 ### Airflow won't start
 ```bash
-# Check logs
-make logs
-
-# Rebuild containers
-make clean
-make init
-make up
+make logs          # check for startup errors
+make clean         # wipe volumes
+make init && make up
 ```
 
-### dbt connection issues
-```bash
-# Test dbt connection
-make dbt-debug
+---
 
-# Check DuckDB file permissions
-docker exec -it airflow-dbt-duckdb-airflow-webserver-1 \
-  ls -la /opt/warehouse/
-```
+## Production Notes
 
-### DuckDB locked errors
-DuckDB supports concurrent reads but only one write at a time. Ensure your DAG serializes write operations.
+- **DuckLake concurrency**: the PostgreSQL catalog supports multiple concurrent clients. dbt models run in parallel (4 threads on `dev`, 8 on `prod`) with no lock conflicts. Each Cosmos task gets its own in-memory DuckDB connection (`:memory:`) and attaches the shared PostgreSQL catalog.
+- **Scaling data volume**: change `SCALE_FACTOR` in `scripts/init_tpch.py` (sf=10 ≈ 10 GB). Wipe the warehouse volume and the postgres volume first so `init_tpch` re-runs.
+- **Airflow executor**: LocalExecutor is used here. Parallel dbt models already run within each Airflow task via dbt threads. For full Airflow-level parallelism across DAG tasks, switch to CeleryExecutor or KubernetesExecutor.
+- **Backups**: back up the `ducklake_catalog` PostgreSQL database and the `/opt/warehouse/data/` Parquet files together — they are not independent.
 
-## Production Considerations
-
-1. **DuckDB Storage**: For production, consider:
-   - Using persistent volume backed by SSD
-   - Regular backups of the `.duckdb` file
-   - Monitoring file size growth
-
-2. **Airflow Executor**: Switch to CeleryExecutor or KubernetesExecutor for:
-   - Parallel task execution
-   - Better resource utilization
-   - Horizontal scaling
-
-3. **dbt Materialization**: Review materialization strategies:
-   - `view`: Fast, no storage, query-time computation
-   - `table`: Slower build, faster queries, storage required
-   - `incremental`: For large datasets with append patterns
-
-4. **Secrets Management**: Use Airflow Connections and Variables instead of hardcoded credentials
+---
 
 ## Resources
 
-- [Apache Airflow Documentation](https://airflow.apache.org/docs/)
-- [dbt Documentation](https://docs.getdbt.com/)
-- [DuckDB Documentation](https://duckdb.org/docs/)
+- [DuckLake documentation](https://ducklake.select/)
+- [dbt-duckdb adapter](https://github.com/duckdb/dbt-duckdb)
 - [Astronomer Cosmos](https://astronomer.github.io/astronomer-cosmos/)
-- [dbt-duckdb Adapter](https://github.com/duckdb/dbt-duckdb)
+- [Apache Airflow documentation](https://airflow.apache.org/docs/)
+- [TPC-H benchmark](https://www.tpc.org/tpch/)
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions welcome! Please open an issue or submit a pull request.
