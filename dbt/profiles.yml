@@ -1,10 +1,15 @@
 analytics:
-  target: dev
+  target: local
   outputs:
+    local:
+      type: duckdb
+      path: '../data/warehouse.duckdb'
+      threads: 4
+
     dev:
       type: duckdb
       path: '/opt/warehouse/warehouse.duckdb'
-      threads: 4
+      threads: 1
 
     prod:
       type: duckdb
