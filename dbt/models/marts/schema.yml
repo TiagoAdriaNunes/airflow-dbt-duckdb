@@ -21,3 +21,30 @@ models:
         description: Date of first order
       - name: last_order_date
         description: Date of most recent order
+
+unit_tests:
+  - name: test_customer_with_no_orders
+    model: customer_orders
+    given:
+      - input: ref('stg_customers')
+        rows:
+          - {customer_id: 1, customer_name: "Alice", email: "a@x.com", created_at: "2024-01-01"}
+      - input: ref('stg_orders')
+        rows: []
+    expect:
+      rows:
+        - {customer_id: 1, customer_name: "Alice", total_orders: 0, total_spent: 0.0, first_order_date: null, last_order_date: null}
+
+  - name: test_customer_order_aggregation
+    model: customer_orders
+    given:
+      - input: ref('stg_customers')
+        rows:
+          - {customer_id: 1, customer_name: "Alice", email: "a@x.com", created_at: "2024-01-01"}
+      - input: ref('stg_orders')
+        rows:
+          - {order_id: 1, customer_id: 1, order_date: "2024-01-10", order_amount: 100}
+          - {order_id: 2, customer_id: 1, order_date: "2024-03-05", order_amount: 50}
+    expect:
+      rows:
+        - {customer_id: 1, customer_name: "Alice", total_orders: 2, total_spent: 150.0, first_order_date: "2024-01-10", last_order_date: "2024-03-05"}

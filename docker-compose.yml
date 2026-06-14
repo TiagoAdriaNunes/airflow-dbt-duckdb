@@ -13,11 +13,18 @@ x-airflow-common:
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # Suppress openlineage warning — not using this integration
+    AIRFLOW__OPENLINEAGE__DISABLED: 'true'
+    # Use memory:// URI to satisfy flask-limiter and silence the warning
+    RATELIMIT_STORAGE_URI: 'memory://'
     # DuckDB warehouse path
     DUCKDB_WAREHOUSE_PATH: /opt/warehouse/warehouse.duckdb
-    # Install additional Python packages on container startup with specific versions
-    # Note: duckdb package includes both Python API and CLI binary
-    _PIP_ADDITIONAL_REQUIREMENTS: 'astronomer-cosmos==1.10.2 dbt-core==1.8.7 dbt-duckdb==1.8.3 pandas pyarrow'
+    # Tell dbt to use the 'dev' target inside Docker (profiles.yml default is 'local')
+    DBT_TARGET: dev
+    # Tell dbt where to find profiles.yml (mounted at /opt/airflow/dbt/)
+    DBT_PROFILES_DIR: /opt/airflow/dbt
+    # Packages are baked into the image via docker/requirements.txt — no runtime installs
+    _PIP_ADDITIONAL_REQUIREMENTS: ''
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/dbt:/opt/airflow/dbt
@@ -63,8 +70,6 @@ services:
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
 
   airflow-scheduler:
     <<: *airflow-common
@@ -78,8 +83,6 @@ services:
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
 
   airflow-init:
     <<: *airflow-common

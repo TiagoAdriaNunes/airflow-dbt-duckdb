@@ -1,0 +1,7 @@
+# dbt is installed in /opt/dbt-venv (see Dockerfile) to avoid the protobuf conflict
+# between opentelemetry-proto==1.27.0 (protobuf<5) and dbt-core 1.9.x (protobuf>=5).
+# Cosmos uses dbt_executable_path to call dbt as a subprocess from that isolated venv.
+astronomer-cosmos==1.14.2
+airflow-provider-duckdb>=0.2.0
+pandas==2.2.3
+pyarrow==18.1.0

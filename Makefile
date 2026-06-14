@@ -21,9 +21,9 @@ init: ## Initialize Airflow (run once before first start)
 	docker compose up airflow-init
 	@echo "$(GREEN)Initialization complete!$(NC)"
 
-up: ## Start all services
-	@echo "$(YELLOW)Starting services...$(NC)"
-	docker compose up -d
+up: ## Start all services (webserver + scheduler only)
+	@echo "$(YELLOW)Starting services... tach$(NC)"
+	docker compose up -d airflow-webserver airflow-scheduler
 	@echo "$(GREEN)Services started! Access Airflow at http://localhost:8080$(NC)"
 	@echo "$(GREEN)Username: airflow | Password: airflow$(NC)"
 
@@ -49,42 +49,52 @@ clean: ## Remove all containers, volumes, and generated files
 	rm -rf logs/* plugins/__pycache__
 	@echo "$(GREEN)Cleanup complete!$(NC)"
 
+DBT_DIR := /opt/airflow/dbt
+DBT_ENV := DBT_PROFILES_DIR=$(DBT_DIR) DBT_TARGET=dev
+
 dbt-deps: ## Install dbt dependencies
 	@echo "$(YELLOW)Installing dbt dependencies...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd /opt/airflow/dbt && dbt deps"
+	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt deps"
 
 dbt-debug: ## Debug dbt connection
 	@echo "$(YELLOW)Running dbt debug...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd /opt/airflow/dbt && dbt debug"
+	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt debug"
 
 dbt-run: ## Run all dbt models
 	@echo "$(YELLOW)Running dbt models...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd /opt/airflow/dbt && dbt run"
+	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt run"
 
 dbt-test: ## Run all dbt tests
 	@echo "$(YELLOW)Running dbt tests...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd /opt/airflow/dbt && dbt test"
+	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt test"
 
 dbt-seed: ## Load seed data
 	@echo "$(YELLOW)Loading seed data...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd /opt/airflow/dbt && dbt seed"
+	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt seed"
 
 dbt-build: ## Run deps, seed, run, and test
 	@echo "$(YELLOW)Building full dbt project...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd /opt/airflow/dbt && dbt deps && dbt seed && dbt run && dbt test"
+	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt deps && dbt seed && dbt run && dbt test"
 
 dbt-docs-generate: ## Generate dbt documentation
 	@echo "$(YELLOW)Generating dbt docs...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd /opt/airflow/dbt && dbt docs generate"
+	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt docs generate"
 
 dbt-docs-serve: ## Serve dbt documentation
 	@echo "$(YELLOW)Serving dbt docs at http://localhost:8081$(NC)"
-	docker compose exec -d airflow-webserver bash -c "cd /opt/airflow/dbt && dbt docs serve --port 8081"
+	docker compose exec -d airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt docs serve --port 8081"
 
-duckdb-cli: ## Open DuckDB CLI (requires duckdb-cli installed in container)
-	@echo "$(YELLOW)Opening DuckDB CLI...$(NC)"
-	@echo "$(YELLOW)Note: If this fails, run 'make duckdb-query' or restart containers$(NC)"
-	docker compose exec airflow-webserver duckdb /opt/warehouse/warehouse.duckdb
+duckdb-cli: ## Open DuckDB CLI (interactive shell)
+	@echo "$(YELLOW)Opening DuckDB CLI — type .quit to exit$(NC)"
+	docker compose exec -it airflow-webserver duckdb /opt/warehouse/warehouse.duckdb
+
+duckdb-clear-lock: ## Clear stale DuckDB lock (PID 0 / orphaned lock from killed process)
+	@echo "$(YELLOW)Clearing stale DuckDB lock...$(NC)"
+	@docker compose exec -T airflow-scheduler bash -c " \
+		cp /opt/warehouse/warehouse.duckdb /opt/warehouse/warehouse.duckdb.bak && \
+		rm /opt/warehouse/warehouse.duckdb && \
+		mv /opt/warehouse/warehouse.duckdb.bak /opt/warehouse/warehouse.duckdb"
+	@echo "$(GREEN)Lock cleared. Run 'make dbt-seed && make dbt-run' to repopulate data.$(NC)"
 
 duckdb-query: ## Run custom DuckDB SQL query (usage: make duckdb-query SQL="SELECT * FROM main_marts.customer_orders")
 	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py sql "$(SQL)"
@@ -114,9 +124,18 @@ install-deps: ## Install Python dependencies in running containers
 ps: ## Show running containers
 	docker compose ps
 
-rebuild: ## Rebuild and restart all services
+rebuild: ## Rebuild image (cached) and restart services
 	@echo "$(YELLOW)Rebuilding services...$(NC)"
 	docker compose down
-	docker compose build --no-cache
-	docker compose up -d
+	DOCKER_BUILDKIT=1 docker compose build
+	$(MAKE) init
+	$(MAKE) up
+	@echo "$(GREEN)Services rebuilt and started!$(NC)"
+
+rebuild-clean: ## Force full rebuild with no cache (slow — use after changing base image or apt deps)
+	@echo "$(YELLOW)Force rebuilding services (no cache)...$(NC)"
+	docker compose down
+	DOCKER_BUILDKIT=1 docker compose build --no-cache
+	$(MAKE) init
+	$(MAKE) up
 	@echo "$(GREEN)Services rebuilt and started!$(NC)"
