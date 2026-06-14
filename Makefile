@@ -1,4 +1,4 @@
-.PHONY: help init up down restart logs clean dbt-run dbt-test dbt-debug dbt-deps lh-cli lh-query lh-explore lh-tables lh-orders lh-stats lh-recent lh-revenue lh-clear-lock
+.PHONY: help init up down restart logs clean dbt-run dbt-test dbt-debug dbt-deps lh-cli lh-query lh-explore lh-tables lh-orders lh-stats lh-recent lh-revenue
 
 # Default target
 .DEFAULT_GOAL := help
@@ -90,14 +90,6 @@ lh-cli: ## Open DuckDB CLI attached to the lakehouse catalog (via PostgreSQL)
 	docker compose exec -it airflow-scheduler bash -c \
 		"printf \"LOAD ducklake;\\nLOAD postgres;\\nATTACH 'ducklake:$${DUCKLAKE_CATALOG_CONN}' AS lakehouse;\\n\" \
 		> /tmp/.lh_init.sql && duckdb -init /tmp/.lh_init.sql"
-
-lh-clear-lock: ## Clear stale DuckDB lock on dbt.duckdb
-	@echo "$(YELLOW)Clearing stale DuckDB lock...$(NC)"
-	@docker compose exec -T airflow-scheduler bash -c " \
-		cp /opt/warehouse/dbt.duckdb /opt/warehouse/dbt.duckdb.bak && \
-		rm /opt/warehouse/dbt.duckdb && \
-		mv /opt/warehouse/dbt.duckdb.bak /opt/warehouse/dbt.duckdb"
-	@echo "$(GREEN)Lock cleared. Run 'make dbt-run' to repopulate data.$(NC)"
 
 lh-query: ## Run custom SQL against the lakehouse (usage: make lh-query SQL="SELECT * FROM lakehouse.marts.customer_orders")
 	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py sql "$(SQL)"
