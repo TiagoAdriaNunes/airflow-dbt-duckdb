@@ -1,4 +1,4 @@
-.PHONY: help init up down restart logs clean dbt-run dbt-test dbt-debug dbt-deps lh-cli lh-query lh-explore lh-tables lh-orders lh-stats lh-recent lh-revenue
+.PHONY: help init up down restart logs clean deep-clean dbt-run dbt-test dbt-debug dbt-deps lh-cli lh-query lh-explore lh-tables lh-orders lh-stats lh-recent lh-revenue
 
 # Default target
 .DEFAULT_GOAL := help
@@ -48,6 +48,13 @@ clean: ## Remove all containers, volumes, and generated files
 	docker compose down -v
 	rm -rf logs/* plugins/__pycache__
 	@echo "$(GREEN)Cleanup complete!$(NC)"
+
+deep-clean: ## Nuclear option: remove containers, volumes, built image, and Docker build cache
+	@echo "$(YELLOW)Deep cleaning — removing containers, volumes, image, and build cache...$(NC)"
+	docker compose down -v --rmi local
+	docker builder prune -f
+	rm -rf logs/* plugins/__pycache__
+	@echo "$(GREEN)Deep clean complete. Run 'make init && make up' to start fresh.$(NC)"
 
 DBT_DIR := /opt/airflow/dbt
 DBT_BIN := /opt/dbt-venv/bin/dbt

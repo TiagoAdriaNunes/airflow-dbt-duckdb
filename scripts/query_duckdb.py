@@ -11,13 +11,14 @@ CATALOG_CONN = os.environ.get(
     "DUCKLAKE_CATALOG_CONN",
     "postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow",
 )
+DATA_PATH = os.environ.get("DUCKLAKE_DATA_PATH", "/opt/warehouse/data")
 
 
 def get_conn():
     conn = duckdb.connect()
     conn.execute("INSTALL ducklake; LOAD ducklake")
     conn.execute("INSTALL postgres; LOAD postgres")
-    conn.execute(f"ATTACH 'ducklake:{CATALOG_CONN}' AS lakehouse")
+    conn.execute(f"ATTACH 'ducklake:{CATALOG_CONN}' AS lakehouse (DATA_PATH '{DATA_PATH}', READ_ONLY)")
     return conn
 
 
