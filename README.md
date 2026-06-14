@@ -244,12 +244,6 @@ The `generate_schema_name` macro (`dbt/macros/`) ensures models land in `lakehou
 ### `make dbt-run` fails with "Cascade Drop not supported in DuckLake"
 The `drop_relation` macro (`dbt/macros/`) handles this. If you're seeing it, check that the macro file is present and that Docker has the latest volume-mounted `dbt/` directory.
 
-### DuckDB locked / stale lock file
-dbt now uses `:memory:` as its connection, so no `.duckdb` file lock can occur. If you see a lock error from a manual `duckdb` CLI session:
-```bash
-make lh-clear-lock   # removes stale lock on dbt.duckdb if still present
-```
-
 ### Airflow won't start
 ```bash
 make logs          # check for startup errors
@@ -261,7 +255,7 @@ make init && make up
 
 ## Production Notes
 
-- **DuckLake concurrency**: the PostgreSQL catalog supports multiple concurrent clients. dbt models run in parallel (4 threads on `dev`, 8 on `prod`) with no lock conflicts. Each Cosmos task gets its own in-memory DuckDB connection (`:memory:`) and attaches the shared PostgreSQL catalog.
+- **DuckLake concurrency**: the PostgreSQL catalog supports multiple concurrent clients. dbt models run in parallel (4 threads on `dev`, 8 on `prod`). Each Cosmos task gets its own in-memory DuckDB connection (`:memory:`) and attaches the shared PostgreSQL catalog.
 - **Scaling data volume**: change `SCALE_FACTOR` in `scripts/init_tpch.py` (sf=10 ≈ 10 GB). Wipe the warehouse volume and the postgres volume first so `init_tpch` re-runs.
 - **Airflow executor**: LocalExecutor is used here. Parallel dbt models already run within each Airflow task via dbt threads. For full Airflow-level parallelism across DAG tasks, switch to CeleryExecutor or KubernetesExecutor.
 - **Backups**: back up the `ducklake_catalog` PostgreSQL database and the `/opt/warehouse/data/` Parquet files together — they are not independent.
