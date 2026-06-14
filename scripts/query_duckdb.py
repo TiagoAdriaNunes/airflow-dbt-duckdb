@@ -1,17 +1,29 @@
 #!/usr/bin/env python3
 """
-Simple DuckDB query script for exploring data
+Simple DuckDB query script for exploring data stored in DuckLake.
 Usage: python query_duckdb.py [query_type]
 """
+import os
 import sys
 import duckdb
 
-DB_PATH = '/opt/warehouse/warehouse.duckdb'
+CATALOG_CONN = os.environ.get(
+    "DUCKLAKE_CATALOG_CONN",
+    "postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow",
+)
+
+
+def get_conn():
+    conn = duckdb.connect()
+    conn.execute("INSTALL ducklake; LOAD ducklake")
+    conn.execute("INSTALL postgres; LOAD postgres")
+    conn.execute(f"ATTACH 'ducklake:{CATALOG_CONN}' AS lakehouse")
+    return conn
+
 
 def run_query(sql, description="Query Result"):
-    """Execute a SQL query and print results"""
     try:
-        conn = duckdb.connect(DB_PATH, read_only=True)
+        conn = get_conn()
         result = conn.execute(sql).fetchdf()
         print(f"\n{description}:")
         print("=" * 70)
@@ -22,34 +34,31 @@ def run_query(sql, description="Query Result"):
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
+
 def show_tables():
-    """Show all tables in the database"""
     sql = """
-        SELECT table_schema, table_name,
-               (SELECT COUNT(*) FROM information_schema.columns c
-                WHERE c.table_schema = t.table_schema
-                AND c.table_name = t.table_name) as columns
-        FROM information_schema.tables t
-        WHERE table_schema LIKE 'main%'
-        ORDER BY table_schema, table_name
+        SELECT schema_name AS table_schema, table_name, column_count AS columns
+        FROM duckdb_tables()
+        WHERE database_name = 'lakehouse'
+        ORDER BY schema_name, table_name
     """
-    run_query(sql, "📊 All Tables")
+    run_query(sql, "All Tables in DuckLake")
+
 
 def show_customer_orders():
-    """Show top 20 customers by spend"""
     sql = """
         SELECT customer_name, market_segment, total_orders,
                printf('$%.2f', total_spent) as total_spent,
                open_orders, fulfilled_orders,
                first_order_date, last_order_date
-        FROM main_marts.customer_orders
+        FROM lakehouse.marts.customer_orders
         ORDER BY total_spent DESC
         LIMIT 20
     """
-    run_query(sql, "💰 Top 20 Customers by Spend")
+    run_query(sql, "Top 20 Customers by Spend")
+
 
 def show_statistics():
-    """Show order statistics"""
     sql = """
         SELECT
             COUNT(*) as total_customers,
@@ -58,12 +67,12 @@ def show_statistics():
             printf('$%.2f', AVG(total_spent)) as avg_customer_value,
             printf('$%.2f', MIN(total_spent)) as min_customer_value,
             printf('$%.2f', MAX(total_spent)) as max_customer_value
-        FROM main_marts.customer_orders
+        FROM lakehouse.marts.customer_orders
     """
-    run_query(sql, "📈 Order Statistics")
+    run_query(sql, "Order Statistics")
+
 
 def show_recent_orders():
-    """Show 10 most recent orders with revenue breakdown"""
     sql = """
         SELECT r.order_id, c.customer_name, c.market_segment,
                r.order_priority,
@@ -71,32 +80,32 @@ def show_recent_orders():
                printf('$%.2f', r.net_revenue)   as net_revenue,
                r.line_count, r.returned_lines,
                r.order_date
-        FROM main_marts.order_revenue r
-        JOIN main_staging.stg_customers c ON r.customer_id = c.customer_id
+        FROM lakehouse.marts.order_revenue r
+        JOIN lakehouse.staging.stg_customers c ON r.customer_id = c.customer_id
         ORDER BY r.order_date DESC
         LIMIT 10
     """
-    run_query(sql, "📅 Recent Orders")
+    run_query(sql, "Recent Orders")
 
 
 def show_revenue_by_segment():
-    """Show net revenue by market segment"""
     sql = """
         SELECT c.market_segment,
                COUNT(*)                              as total_orders,
                printf('$%.2f', SUM(r.net_revenue))  as net_revenue,
                printf('$%.2f', AVG(r.net_revenue))  as avg_order_revenue,
                ROUND(AVG(r.return_rate_pct), 2)     as avg_return_rate_pct
-        FROM main_marts.order_revenue r
-        JOIN main_staging.stg_customers c ON r.customer_id = c.customer_id
+        FROM lakehouse.marts.order_revenue r
+        JOIN lakehouse.staging.stg_customers c ON r.customer_id = c.customer_id
         GROUP BY c.market_segment
         ORDER BY SUM(r.net_revenue) DESC
     """
-    run_query(sql, "📊 Revenue by Market Segment")
+    run_query(sql, "Revenue by Market Segment")
+
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python query_duckdb.py [tables|orders|stats|recent|sql '<query>']")
+        print("Usage: python query_duckdb.py [tables|orders|stats|recent|revenue|sql '<query>']")
         sys.exit(1)
 
     query_type = sys.argv[1].lower()
@@ -112,11 +121,11 @@ def main():
     elif query_type == 'revenue':
         show_revenue_by_segment()
     elif query_type == 'sql' and len(sys.argv) > 2:
-        custom_sql = sys.argv[2]
-        run_query(custom_sql, "Custom Query Result")
+        run_query(sys.argv[2], "Custom Query Result")
     else:
         print(f"Unknown query type: {query_type}")
         sys.exit(1)
+
 
 if __name__ == '__main__':
     main()
