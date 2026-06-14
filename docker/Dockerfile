@@ -4,6 +4,9 @@ USER root
 
 ARG DUCKDB_VERSION=1.5.3
 
+# uv binary — pinned version, no runtime download needed
+COPY --from=ghcr.io/astral-sh/uv:0.11.21 /uv /uvx /usr/local/bin/
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends unzip curl && \
     curl -fsSL "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip" \
@@ -14,12 +17,18 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+ENV UV_LINK_MODE=copy
+
 # Install dbt in an isolated venv to avoid the protobuf conflict:
-# opentelemetry-proto==1.27.0 (pinned by Airflow 2.10.4) requires protobuf<5.0
-# dbt-core 1.9.x requires protobuf>=5.0 — mutually exclusive in a shared env.
-# Cosmos calls dbt as a subprocess via dbt_executable_path, so no Python-level conflict.
-RUN python3 -m venv /opt/dbt-venv && \
-    /opt/dbt-venv/bin/pip install --no-cache-dir "dbt-duckdb==1.9.1" "dbt-core>=1.9.0,<1.10" && \
+# opentelemetry-proto (Airflow 2.10.4) pins protobuf<5; dbt-core>=1.9 requires protobuf>=5.
+# Cosmos calls dbt as a subprocess via dbt_executable_path — no Python-level conflict.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv venv /opt/dbt-venv && \
+    uv pip install --python /opt/dbt-venv/bin/python \
+        "dbt-duckdb==1.10.1" \
+        "dbt-core==1.10.11" \
+        "dbt-adapters==1.16.6" \
+        "dbt-common==1.29.0" && \
     chmod -R a+rx /opt/dbt-venv
 
 USER airflow

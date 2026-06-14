@@ -21,6 +21,8 @@ analytics:
       attach:
         - path: "ducklake:postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow"
           alias: lakehouse
+          options:
+            data_path: "/opt/warehouse/data"
       schema: marts
       threads: 4
 
@@ -33,5 +35,7 @@ analytics:
       attach:
         - path: "ducklake:postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow"
           alias: lakehouse
+          options:
+            data_path: "/opt/warehouse/data"
       schema: marts
       threads: 8
