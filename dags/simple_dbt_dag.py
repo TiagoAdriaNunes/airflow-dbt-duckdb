@@ -2,9 +2,6 @@
 Simple/testing DAG for running dbt with Cosmos.
 Uses DbtTaskGroup inside a regular DAG so you can wrap it with custom tasks.
 Each dbt model gets its own Airflow task automatically.
-
-Pipeline:
-  dbt_run (stg_customers, stg_orders, stg_lineitem → customer_orders, order_revenue)
 """
 
 from datetime import datetime, timedelta
@@ -27,7 +24,7 @@ default_args = {
     "owner": "airflow",
     "depends_on_past": False,
     "retries": 1,
-    "retry_delay": timedelta(minutes=5),
+    "retry_delay": timedelta(minutes=1),
 }
 
 with DAG(

@@ -3,15 +3,35 @@ analytics:
   outputs:
     local:
       type: duckdb
-      path: '../data/warehouse.duckdb'
+      path: '../data/dbt.duckdb'
+      extensions:
+        - ducklake
+      attach:
+        - path: "ducklake:../data/catalog.duckdb"
+          alias: lakehouse
+      schema: marts
       threads: 4
 
     dev:
       type: duckdb
-      path: '/opt/warehouse/warehouse.duckdb'
-      threads: 1
+      path: ':memory:'
+      extensions:
+        - ducklake
+        - postgres
+      attach:
+        - path: "ducklake:postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow"
+          alias: lakehouse
+      schema: marts
+      threads: 4
 
     prod:
       type: duckdb
-      path: '/opt/warehouse/warehouse.duckdb'
+      path: ':memory:'
+      extensions:
+        - ducklake
+        - postgres
+      attach:
+        - path: "ducklake:postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow"
+          alias: lakehouse
+      schema: marts
       threads: 8

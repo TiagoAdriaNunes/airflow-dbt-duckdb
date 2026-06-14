@@ -1,4 +1,4 @@
-.PHONY: help init up down restart logs clean dbt-run dbt-test dbt-debug dbt-deps duckdb-cli duckdb-query duckdb-explore duckdb-show-tables duckdb-customer-orders duckdb-stats duckdb-recent duckdb-revenue
+.PHONY: help init up down restart logs clean dbt-run dbt-test dbt-debug dbt-deps lh-cli lh-query lh-explore lh-tables lh-orders lh-stats lh-recent lh-revenue lh-clear-lock
 
 # Default target
 .DEFAULT_GOAL := help
@@ -50,71 +50,74 @@ clean: ## Remove all containers, volumes, and generated files
 	@echo "$(GREEN)Cleanup complete!$(NC)"
 
 DBT_DIR := /opt/airflow/dbt
+DBT_BIN := /opt/dbt-venv/bin/dbt
 DBT_ENV := DBT_PROFILES_DIR=$(DBT_DIR) DBT_TARGET=dev
 
 dbt-deps: ## Install dbt dependencies
 	@echo "$(YELLOW)Installing dbt dependencies...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt deps"
+	docker compose exec airflow-scheduler bash -c "cd $(DBT_DIR) && $(DBT_ENV) $(DBT_BIN) deps"
 
 dbt-debug: ## Debug dbt connection
 	@echo "$(YELLOW)Running dbt debug...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt debug"
+	docker compose exec airflow-scheduler bash -c "cd $(DBT_DIR) && $(DBT_ENV) $(DBT_BIN) debug"
 
 dbt-run: ## Run all dbt models
 	@echo "$(YELLOW)Running dbt models...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt run"
+	docker compose exec airflow-scheduler bash -c "cd $(DBT_DIR) && $(DBT_ENV) $(DBT_BIN) run"
 
 dbt-test: ## Run all dbt tests
 	@echo "$(YELLOW)Running dbt tests...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt test"
+	docker compose exec airflow-scheduler bash -c "cd $(DBT_DIR) && $(DBT_ENV) $(DBT_BIN) test"
 
 dbt-seed: ## Load seed data
 	@echo "$(YELLOW)Loading seed data...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt seed"
+	docker compose exec airflow-scheduler bash -c "cd $(DBT_DIR) && $(DBT_ENV) $(DBT_BIN) seed"
 
 dbt-build: ## Run deps, seed, run, and test
 	@echo "$(YELLOW)Building full dbt project...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt deps && dbt seed && dbt run && dbt test"
+	docker compose exec airflow-scheduler bash -c "cd $(DBT_DIR) && $(DBT_ENV) $(DBT_BIN) deps && $(DBT_BIN) seed && $(DBT_BIN) run && $(DBT_BIN) test"
 
 dbt-docs-generate: ## Generate dbt documentation
 	@echo "$(YELLOW)Generating dbt docs...$(NC)"
-	docker compose exec airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt docs generate"
+	docker compose exec airflow-scheduler bash -c "cd $(DBT_DIR) && $(DBT_ENV) $(DBT_BIN) docs generate"
 
 dbt-docs-serve: ## Serve dbt documentation
 	@echo "$(YELLOW)Serving dbt docs at http://localhost:8081$(NC)"
-	docker compose exec -d airflow-webserver bash -c "cd $(DBT_DIR) && $(DBT_ENV) dbt docs serve --port 8081"
+	docker compose exec -d airflow-scheduler bash -c "cd $(DBT_DIR) && $(DBT_ENV) $(DBT_BIN) docs serve --port 8081"
 
-duckdb-cli: ## Open DuckDB CLI (interactive shell)
+lh-cli: ## Open DuckDB CLI attached to the lakehouse catalog (via PostgreSQL)
 	@echo "$(YELLOW)Opening DuckDB CLI — type .quit to exit$(NC)"
-	docker compose exec -it airflow-webserver duckdb /opt/warehouse/warehouse.duckdb
+	docker compose exec -it airflow-scheduler bash -c \
+		"printf \"LOAD ducklake;\\nLOAD postgres;\\nATTACH 'ducklake:$${DUCKLAKE_CATALOG_CONN}' AS lakehouse;\\n\" \
+		> /tmp/.lh_init.sql && duckdb -init /tmp/.lh_init.sql"
 
-duckdb-clear-lock: ## Clear stale DuckDB lock (PID 0 / orphaned lock from killed process)
+lh-clear-lock: ## Clear stale DuckDB lock on dbt.duckdb
 	@echo "$(YELLOW)Clearing stale DuckDB lock...$(NC)"
 	@docker compose exec -T airflow-scheduler bash -c " \
-		cp /opt/warehouse/warehouse.duckdb /opt/warehouse/warehouse.duckdb.bak && \
-		rm /opt/warehouse/warehouse.duckdb && \
-		mv /opt/warehouse/warehouse.duckdb.bak /opt/warehouse/warehouse.duckdb"
-	@echo "$(GREEN)Lock cleared. Run 'make dbt-seed && make dbt-run' to repopulate data.$(NC)"
+		cp /opt/warehouse/dbt.duckdb /opt/warehouse/dbt.duckdb.bak && \
+		rm /opt/warehouse/dbt.duckdb && \
+		mv /opt/warehouse/dbt.duckdb.bak /opt/warehouse/dbt.duckdb"
+	@echo "$(GREEN)Lock cleared. Run 'make dbt-run' to repopulate data.$(NC)"
 
-duckdb-query: ## Run custom DuckDB SQL query (usage: make duckdb-query SQL="SELECT * FROM main_marts.customer_orders")
+lh-query: ## Run custom SQL against the lakehouse (usage: make lh-query SQL="SELECT * FROM lakehouse.marts.customer_orders")
 	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py sql "$(SQL)"
 
-duckdb-explore: ## Explore DuckDB data with menu
+lh-explore: ## Explore lakehouse data with menu
 	@./explore_data.sh
 
-duckdb-show-tables: ## Show all DuckDB tables
+lh-tables: ## List all schemas and tables in the lakehouse catalog
 	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py tables
 
-duckdb-customer-orders: ## Show customer orders data
+lh-orders: ## Top 20 customers by spend
 	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py orders
 
-duckdb-stats: ## Show order statistics
+lh-stats: ## Order statistics (count, total revenue, avg customer value)
 	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py stats
 
-duckdb-recent: ## Show recent orders
+lh-recent: ## 10 most recent orders
 	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py recent
 
-duckdb-revenue: ## Show net revenue by market segment
+lh-revenue: ## Net revenue by market segment
 	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py revenue
 
 airflow-cli: ## Open Airflow CLI
