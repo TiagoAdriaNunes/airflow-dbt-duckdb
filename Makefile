@@ -1,4 +1,4 @@
-.PHONY: help init up down restart logs clean dbt-run dbt-test dbt-debug dbt-deps duckdb-cli duckdb-query duckdb-explore duckdb-show-tables duckdb-customer-orders duckdb-stats duckdb-recent
+.PHONY: help init up down restart logs clean dbt-run dbt-test dbt-debug dbt-deps duckdb-cli duckdb-query duckdb-explore duckdb-show-tables duckdb-customer-orders duckdb-stats duckdb-recent duckdb-revenue
 
 # Default target
 .DEFAULT_GOAL := help
@@ -113,6 +113,9 @@ duckdb-stats: ## Show order statistics
 
 duckdb-recent: ## Show recent orders
 	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py recent
+
+duckdb-revenue: ## Show net revenue by market segment
+	@docker compose exec -T airflow-scheduler python /opt/airflow/scripts/query_duckdb.py revenue
 
 airflow-cli: ## Open Airflow CLI
 	docker compose exec airflow-webserver bash

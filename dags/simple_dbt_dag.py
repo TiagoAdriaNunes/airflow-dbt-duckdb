@@ -2,6 +2,9 @@
 Simple/testing DAG for running dbt with Cosmos.
 Uses DbtTaskGroup inside a regular DAG so you can wrap it with custom tasks.
 Each dbt model gets its own Airflow task automatically.
+
+Pipeline:
+  dbt_run (stg_customers, stg_orders, stg_lineitem → customer_orders, order_revenue)
 """
 
 from datetime import datetime, timedelta
@@ -30,11 +33,11 @@ default_args = {
 with DAG(
     dag_id="simple_dbt_pipeline",
     default_args=default_args,
-    description="Simple dbt pipeline using Cosmos — good for testing",
+    description="TPC-H → dbt pipeline: init data, then run staging + mart models",
     schedule_interval=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=["dbt", "simple", "duckdb"],
+    tags=["dbt", "tpch", "duckdb"],
     max_active_runs=1,
     max_active_tasks=1,
 ) as dag:

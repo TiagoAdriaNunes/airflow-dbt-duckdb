@@ -2,25 +2,70 @@ version: 2
 
 models:
   - name: customer_orders
-    description: Customer order analytics with total spend and order count
+    description: Customer order analytics — one row per customer with spend and order counts
     columns:
       - name: customer_id
-        description: Primary key for customers
+        description: Primary key
         tests:
           - unique
           - not_null
       - name: customer_name
         description: Customer name
-      - name: email
-        description: Customer email
+      - name: phone
+        description: Phone number
+      - name: market_segment
+        description: AUTOMOBILE, BUILDING, FURNITURE, HOUSEHOLD, or MACHINERY
+      - name: account_balance
+        description: Account balance in USD
       - name: total_orders
         description: Total number of orders placed
       - name: total_spent
-        description: Total amount spent by customer
+        description: Sum of order amounts (list price)
+      - name: open_orders
+        description: Orders with status O (open)
+      - name: fulfilled_orders
+        description: Orders with status F (fulfilled)
       - name: first_order_date
-        description: Date of first order
+        description: Date of earliest order
       - name: last_order_date
         description: Date of most recent order
+
+  - name: order_revenue
+    description: Order-level revenue — list price vs net/gross after discount and tax
+    columns:
+      - name: order_id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: FK to customer_orders
+        tests:
+          - not_null
+      - name: order_date
+        description: Date the order was placed
+      - name: order_status
+        description: O=open, F=fulfilled, P=partial
+      - name: order_priority
+        description: "1-URGENT through 5-LOW"
+      - name: clerk
+        description: Clerk who processed the order
+      - name: list_price
+        description: Total order price from the orders table
+      - name: net_revenue
+        description: Sum of (extended_price × (1 - discount)) across all lineitems
+      - name: gross_revenue
+        description: Sum of net_price × (1 + tax) across all lineitems
+      - name: total_quantity
+        description: Total units ordered
+      - name: line_count
+        description: Number of line items in the order
+      - name: returned_lines
+        description: Number of line items with return_flag = R
+      - name: avg_net_price_per_unit
+        description: net_revenue ÷ total_quantity
+      - name: return_rate_pct
+        description: Percentage of lines that were returned
 
 unit_tests:
   - name: test_customer_with_no_orders
@@ -28,23 +73,23 @@ unit_tests:
     given:
       - input: ref('stg_customers')
         rows:
-          - {customer_id: 1, customer_name: "Alice", email: "a@x.com", created_at: "2024-01-01"}
+          - {customer_id: 1, customer_name: "Alice", phone: "555-0100", market_segment: "BUILDING", account_balance: 1000.0, nation_key: 1}
       - input: ref('stg_orders')
         rows: []
     expect:
       rows:
-        - {customer_id: 1, customer_name: "Alice", total_orders: 0, total_spent: 0.0, first_order_date: null, last_order_date: null}
+        - {customer_id: 1, customer_name: "Alice", total_orders: 0, total_spent: 0.0, open_orders: 0, fulfilled_orders: 0}
 
   - name: test_customer_order_aggregation
     model: customer_orders
     given:
       - input: ref('stg_customers')
         rows:
-          - {customer_id: 1, customer_name: "Alice", email: "a@x.com", created_at: "2024-01-01"}
+          - {customer_id: 1, customer_name: "Alice", phone: "555-0100", market_segment: "BUILDING", account_balance: 1000.0, nation_key: 1}
       - input: ref('stg_orders')
         rows:
-          - {order_id: 1, customer_id: 1, order_date: "2024-01-10", order_amount: 100}
-          - {order_id: 2, customer_id: 1, order_date: "2024-03-05", order_amount: 50}
+          - {order_id: 1, customer_id: 1, order_date: "1994-01-10", order_amount: 1000.00, order_status: "F", order_priority: "1-URGENT", clerk: "Clerk#000001"}
+          - {order_id: 2, customer_id: 1, order_date: "1995-03-05", order_amount: 500.00, order_status: "O", order_priority: "3-MEDIUM", clerk: "Clerk#000002"}
     expect:
       rows:
-        - {customer_id: 1, customer_name: "Alice", total_orders: 2, total_spent: 150.0, first_order_date: "2024-01-10", last_order_date: "2024-03-05"}
+        - {customer_id: 1, total_orders: 2, total_spent: 1500.0, open_orders: 1, fulfilled_orders: 1}
