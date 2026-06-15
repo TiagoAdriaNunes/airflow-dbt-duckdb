@@ -53,6 +53,7 @@ services:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
+    command: postgres -c log_min_duration_statement=2000 -c log_statement=none
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
       - ./docker/init-ducklake-db.sql:/docker-entrypoint-initdb.d/init-ducklake-db.sql
@@ -61,6 +62,71 @@ services:
       interval: 10s
       retries: 5
       start_period: 5s
+    restart: always
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/airflow_pipeline.json
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.103.0
+    group_add:
+      - "995"   # docker group GID — grants access to /var/run/docker.sock
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics scrape endpoint
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    depends_on:
+      - otel-collector
+    restart: always
+
+  ducklake-metrics:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.metrics
+    environment:
+      DUCKLAKE_PG_HOST: postgres
+      DUCKLAKE_PG_PORT: 5432
+      DUCKLAKE_PG_DB: ducklake_catalog
+      DUCKLAKE_PG_USER: airflow
+      DUCKLAKE_PG_PASSWORD: airflow
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      SCRAPE_INTERVAL: 60
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
     restart: always
 
   airflow-webserver:
@@ -127,3 +193,5 @@ services:
 volumes:
   postgres-db-volume:
   warehouse:  # Shared volume for DuckDB warehouse file
+  grafana-storage:
+  prometheus-data:

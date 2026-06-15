@@ -1,4 +1,4 @@
-.PHONY: help init up down restart logs clean deep-clean dbt-run dbt-test dbt-debug dbt-deps lh-cli lh-query lh-explore lh-tables lh-orders lh-stats lh-recent lh-revenue
+.PHONY: help init up down restart logs clean deep-clean dbt-run dbt-test dbt-debug dbt-deps lh-cli lh-query lh-explore lh-tables lh-orders lh-stats lh-recent lh-revenue obs-build obs-up obs-down obs-logs obs-status logs-grafana logs-prometheus logs-otel logs-metrics
 
 # Default target
 .DEFAULT_GOAL := help
@@ -21,11 +21,12 @@ init: ## Initialize Airflow (run once before first start)
 	docker compose up airflow-init
 	@echo "$(GREEN)Initialization complete!$(NC)"
 
-up: ## Start all services (webserver + scheduler only)
-	@echo "$(YELLOW)Starting services... tach$(NC)"
-	docker compose up -d airflow-webserver airflow-scheduler
-	@echo "$(GREEN)Services started! Access Airflow at http://localhost:8080$(NC)"
-	@echo "$(GREEN)Username: airflow | Password: airflow$(NC)"
+up: obs-build ## Start all services (Airflow + full observability stack)
+	@echo "$(YELLOW)Starting services...$(NC)"
+	docker compose up -d airflow-webserver airflow-scheduler grafana otel-collector prometheus ducklake-metrics
+	@echo "$(GREEN)Airflow:    http://localhost:8080  (airflow / airflow)$(NC)"
+	@echo "$(GREEN)Grafana:    http://localhost:3000  (admin / admin)$(NC)"
+	@echo "$(GREEN)Prometheus: http://localhost:9090$(NC)"
 
 down: ## Stop all services
 	@echo "$(YELLOW)Stopping services...$(NC)"
@@ -144,3 +145,44 @@ rebuild-clean: ## Force full rebuild with no cache (slow — use after changing 
 	$(MAKE) init
 	$(MAKE) up
 	@echo "$(GREEN)Services rebuilt and started!$(NC)"
+
+# ── Observability ────────────────────────────────────────────────────────────
+
+obs-build: ## Build the ducklake-metrics image (runs automatically on make up)
+	@echo "$(YELLOW)Building ducklake-metrics image...$(NC)"
+	DOCKER_BUILDKIT=1 docker compose build ducklake-metrics
+	@echo "$(GREEN)ducklake-metrics image ready$(NC)"
+
+obs-up: ## Start only the observability stack (Grafana + OTEL + Prometheus + ducklake-metrics)
+	@echo "$(YELLOW)Starting observability stack...$(NC)"
+	docker compose up -d grafana otel-collector prometheus ducklake-metrics
+	@echo "$(GREEN)Grafana:    http://localhost:3000  (admin / admin)$(NC)"
+	@echo "$(GREEN)Prometheus: http://localhost:9090$(NC)"
+
+obs-down: ## Stop only the observability services
+	@echo "$(YELLOW)Stopping observability stack...$(NC)"
+	docker compose stop grafana otel-collector prometheus ducklake-metrics
+	docker compose rm -f grafana otel-collector prometheus ducklake-metrics
+
+obs-logs: ## Tail logs from all observability services
+	docker compose logs -f grafana otel-collector prometheus ducklake-metrics
+obs-status: ## Show health of observability services and print first metric names
+	@echo "$(BLUE)── Container status ─────────────────────────────────────$(NC)"
+	@docker compose ps grafana otel-collector prometheus ducklake-metrics
+	@echo ""
+	@echo "$(BLUE)── DuckLake metrics available in Prometheus ─────────────$(NC)"
+	@docker compose exec -T prometheus wget -qO- 'http://localhost:9090/api/v1/label/__name__/values' 2>/dev/null \
+		| python3 -c "import sys,json; names=[n for n in json.load(sys.stdin)['data'] if n.startswith('ducklake')]; print('\n'.join(names))" \
+		|| echo "  (Prometheus not ready yet — wait ~60s after obs-up)"
+
+logs-grafana: ## Tail Grafana logs
+	docker compose logs -f grafana
+
+logs-prometheus: ## Tail Prometheus logs
+	docker compose logs -f prometheus
+
+logs-otel: ## Tail OpenTelemetry Collector logs
+	docker compose logs -f otel-collector
+
+logs-metrics: ## Tail DuckLake metrics exporter logs
+	docker compose logs -f ducklake-metrics
