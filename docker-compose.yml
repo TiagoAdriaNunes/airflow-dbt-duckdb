@@ -84,11 +84,8 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.154.0
-    group_add:
-      - "995"   # docker group GID — grants access to /var/run/docker.sock
     volumes:
       - ./otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
