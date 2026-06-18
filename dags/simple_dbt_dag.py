@@ -31,7 +31,7 @@ with DAG(
     dag_id="simple_dbt_pipeline",
     default_args=default_args,
     description="TPC-H → dbt pipeline: init data, then run staging + mart models",
-    schedule_interval=None,
+    schedule=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["dbt", "tpch", "duckdb"],
