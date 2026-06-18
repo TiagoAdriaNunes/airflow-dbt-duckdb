@@ -13,7 +13,7 @@ CATALOG_CONN = os.environ.get(
     "postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow",
 )
 DATA_PATH = os.environ.get("DUCKLAKE_DATA_PATH", "/opt/warehouse/data")
-SCALE_FACTOR = 1  # sf=1 ≈ 1 GB (150k customers, 1.5M orders, 6M lineitems)
+SCALE_FACTOR = float(os.environ.get("TPCH_SCALE_FACTOR", "1"))  # sf=1 ≈ 1 GB, sf=3 ≈ 3 GB
 STAGING_DB = "/tmp/tpch_staging.duckdb"
 
 TABLES = ["customer", "orders", "lineitem", "supplier", "nation", "region", "part", "partsupp"]
@@ -63,7 +63,6 @@ def init_tpch() -> None:
     size_hint = f"~{SCALE_FACTOR} GB" if SCALE_FACTOR >= 1 else f"~{int(SCALE_FACTOR * 1000)} MB"
     print(f"Generating TPC-H data (scale factor={SCALE_FACTOR}, {size_hint})...")
     staging = duckdb.connect(STAGING_DB)
-    staging.execute("SET memory_limit='1500MB'")
     staging.execute("SET temp_directory='/tmp'")
     staging.execute("INSTALL tpch; LOAD tpch")
     staging.execute(f"CALL dbgen(sf={SCALE_FACTOR})")

@@ -25,6 +25,8 @@ x-airflow-common:
     DUCKLAKE_CATALOG_CONN: "postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow"
     # Parquet data files are stored here inside the shared warehouse volume
     DUCKLAKE_DATA_PATH: /opt/warehouse/data
+    # TPC-H scale factor: sf=1 ≈ 1 GB, sf=3 ≈ 3 GB, sf=10 ≈ 10 GB
+    TPCH_SCALE_FACTOR: ${TPCH_SCALE_FACTOR:-1}
     # Tell dbt to use the 'dev' target inside Docker (profiles.yml default is 'local')
     DBT_TARGET: dev
     # Tell dbt where to find profiles.yml (mounted at /opt/airflow/dbt/)
