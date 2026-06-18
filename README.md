@@ -1,6 +1,6 @@
 # airflow-dbt-duckdb
 
-A lightweight, fully containerised analytics stack: Apache Airflow orchestrates a TPC-H benchmark pipeline that loads raw data into **DuckLake**, then runs dbt transformations to produce analytics-ready tables — all running locally via Docker Compose.
+A lightweight, fully containerised analytics stack: Apache Airflow orchestrates a TPC-H benchmark pipeline that loads raw data into **DuckLake**, runs dbt transformations to produce analytics-ready tables, and exposes pipeline and lakehouse metrics through a full observability stack — all running locally via Docker Compose.
 
 ## Tech Stack
 
@@ -10,6 +10,9 @@ A lightweight, fully containerised analytics stack: Apache Airflow orchestrates 
 | dbt | 1.9 | SQL transformations |
 | DuckDB + DuckLake | 1.3 | Analytical engine + open table format |
 | Astronomer Cosmos | latest | dbt ↔ Airflow integration |
+| Grafana | 13.0.2 | Metrics dashboards |
+| Prometheus | v3.12.0 | Metrics storage |
+| OpenTelemetry Collector | 0.154.0 | Metrics pipeline |
 | Docker Compose | — | Local environment |
 
 ---
@@ -57,7 +60,7 @@ start → init_tpch → dbt_run (Cosmos task group) → end
               │    stg_orders    ──┼─→ customer_orders
               │    stg_lineitem ──┘    order_revenue
               │
-       Generates TPC-H sf=1 (~1 GB) via dbgen,
+       Generates TPC-H data via dbgen (scale factor controlled by TPCH_SCALE_FACTOR),
        writes 8 tables into lakehouse.raw.
        Idempotent — skips if data already exists.
 ```
@@ -79,6 +82,21 @@ Cosmos automatically creates one Airflow task per dbt model, giving you task-lev
 
 ---
 
+### Observability Stack
+
+```
+ducklake-metrics ──OTLP──▶ otel-collector:4318 ──▶ Prometheus:9090 ──▶ Grafana:3000
+                                                                              │
+                                                         Airflow PostgreSQL ──┘
+```
+
+- **ducklake-metrics** — scrapes DuckLake catalog (snapshots, tables, files, size) every 60s and exports via OTLP
+- **otel-collector** — receives OTLP metrics, exposes a Prometheus scrape endpoint on `:8889`
+- **Prometheus** — scrapes otel-collector and stores time-series data
+- **Grafana** — dashboards for both Airflow pipeline metrics (from PostgreSQL) and DuckLake catalog metrics (from Prometheus)
+
+---
+
 ## Repository Structure
 
 ```
@@ -93,18 +111,27 @@ airflow-dbt-duckdb/
 │   ├── macros/
 │   │   ├── generate_schema_name.sql  # Use custom schema names as-is (no prefix)
 │   │   └── drop_relation.sql         # DuckLake-safe DROP (no CASCADE)
-│   ├── seeds/                  # CSV seed data (raw_customers, raw_orders)
 │   ├── dbt_project.yml
 │   ├── profiles.yml            # DuckDB/DuckLake connection (local / dev / prod)
 │   └── packages.yml
 ├── scripts/
 │   ├── init_tpch.py            # Generates TPC-H data into lakehouse.raw
 │   └── query_duckdb.py         # CLI query tool for the lakehouse catalog
+├── grafana/
+│   ├── dashboards/             # Provisioned Grafana dashboards
+│   └── provisioning/           # Datasource and dashboard provider config
+├── otel/
+│   └── otel-collector-config.yaml
+├── prometheus/
+│   └── prometheus.yml
 ├── docker/
-│   └── Dockerfile
+│   ├── Dockerfile              # Airflow image (dbt, DuckDB, Cosmos)
+│   ├── Dockerfile.metrics      # ducklake-metrics image
+│   └── requirements.txt
 ├── docker-compose.yml
 ├── Makefile
-└── .env.example
+├── .env.example
+└── README.md
 ```
 
 ---
@@ -113,51 +140,57 @@ airflow-dbt-duckdb/
 
 ### Prerequisites
 
-- Docker and Docker Compose
-- 6 GB free disk (TPC-H sf=1 ≈ 1 GB raw, plus Airflow overhead)
+- Docker Desktop (Mac/Windows) or Docker Engine (Linux)
+- 8 GB free disk (TPC-H sf=1 ≈ 1 GB raw, plus Airflow + observability overhead)
 - 4 GB available RAM
 
-### Setup
+### First-time setup (one command)
 
 ```bash
 git clone https://github.com/yourusername/airflow-dbt-duckdb.git
 cd airflow-dbt-duckdb
 
-cp .env.example .env
-make init   # one-time Airflow DB init
-make up     # start webserver + scheduler
+make bootstrap
 ```
 
-Open **http://localhost:8080** (user: `airflow`, password: `airflow`).
+`bootstrap` does everything in sequence: initialises Airflow, builds the ducklake-metrics image, starts all services, waits for Airflow to be healthy, then triggers the pipeline.
 
-### Running the Pipeline
+Open **http://localhost:8080** (user: `airflow`, password: `airflow`).  
+Open **http://localhost:3000** (user: `admin`, password: `admin`) for Grafana.
 
-1. Enable the `dbt_analytics_pipeline` DAG in the UI
-2. Click **Trigger DAG**
-3. `init_tpch` runs first (~2 min to generate 1 GB of TPC-H data), then dbt models run
-
-Or trigger dbt manually without Airflow:
+### Subsequent starts
 
 ```bash
-make dbt-run    # run all 5 models against lakehouse
-make dbt-test   # run data quality tests
+make up           # start all services (images already built)
+make pipeline-run # trigger the DAG manually if needed
 ```
 
 ---
 
 ## Makefile Reference
 
-### Services
+### Core
 
 ```bash
-make init            # One-time Airflow initialisation
-make up              # Start webserver + scheduler
+make bootstrap       # First-time setup: init + build + start + trigger pipeline
+make init            # One-time Airflow initialisation (creates .env from .env.example)
+make up              # Start all services
 make down            # Stop all services
 make restart         # down + up
+make rebuild         # Rebuild Airflow image (cached) and restart
+make rebuild-clean   # Force full rebuild with no cache
+make ps              # Show running containers
 make logs            # Tail all container logs
-make logs-scheduler  # Tail scheduler logs only
+make logs-airflow    # Tail Airflow webserver logs
+make logs-scheduler  # Tail Airflow scheduler logs
 make clean           # Remove containers, volumes, and generated files
-make rebuild         # Rebuild Docker image and restart
+make deep-clean      # Nuclear: remove containers, volumes, built images, and build cache
+```
+
+### Pipeline
+
+```bash
+make pipeline-run    # Trigger the dbt_analytics_pipeline DAG
 ```
 
 ### dbt
@@ -165,8 +198,7 @@ make rebuild         # Rebuild Docker image and restart
 ```bash
 make dbt-run          # Run all models (writes to lakehouse.marts + lakehouse.staging)
 make dbt-test         # Run all data quality tests
-make dbt-seed         # Load CSV seeds into dbt.duckdb
-make dbt-build        # deps + seed + run + test in one shot
+make dbt-build        # deps + run + test in one shot
 make dbt-debug        # Test dbt connection
 make dbt-deps         # Install dbt packages
 make dbt-docs-generate  # Generate dbt documentation site
@@ -189,20 +221,37 @@ make lh-query SQL="SELECT * FROM lakehouse.marts.customer_orders LIMIT 5"
 make lh-cli
 ```
 
+### Observability
+
+```bash
+make obs-build      # Build the ducklake-metrics image
+make obs-up         # Start only the observability stack
+make obs-down       # Stop only the observability services
+make obs-logs       # Tail logs from all observability services
+make obs-status     # Show container health + list DuckLake metrics in Prometheus
+make logs-grafana   # Tail Grafana logs
+make logs-prometheus  # Tail Prometheus logs
+make logs-otel      # Tail OpenTelemetry Collector logs
+make logs-metrics   # Tail ducklake-metrics exporter logs
+```
+
 ---
 
-## Development
-
-### Environment Variables
+## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DUCKLAKE_CATALOG_CONN` | `postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow` | DuckLake PostgreSQL catalog connection string |
-| `DUCKLAKE_DATA_PATH` | `/opt/warehouse/data` | Directory for Parquet data files (used only on first `ATTACH`) |
+| `AIRFLOW_UID` | `50000` | UID for Airflow containers (50000 = Docker Desktop default) |
+| `AIRFLOW_PROJ_DIR` | `.` | Project root mounted into Airflow containers |
+| `TPCH_SCALE_FACTOR` | `1` | TPC-H data volume: sf=1 ≈ 1 GB, sf=3 ≈ 3 GB, sf=10 ≈ 10 GB |
+| `DUCKLAKE_CATALOG_CONN` | `postgres:dbname=ducklake_catalog ...` | DuckLake PostgreSQL catalog connection string |
+| `DUCKLAKE_DATA_PATH` | `/opt/warehouse/data` | Directory for Parquet data files |
 
-These are set in `docker-compose.yml` and consumed by `init_tpch.py`, `query_duckdb.py`, and `dbt/profiles.yml`.
+Set overrides in `.env` (copied from `.env.example` by `make init`).
 
 ---
+
+## Development
 
 ### Adding a New dbt Model
 
@@ -223,15 +272,38 @@ docker compose exec airflow-scheduler bash -c \
    /opt/dbt-venv/bin/dbt run --select customer_orders"
 ```
 
-### Resetting the Lakehouse
+### Adding Python Dependencies
 
-To wipe DuckLake data and start fresh (e.g., to re-run `init_tpch`):
+Add the package to `docker/requirements.txt`, then rebuild:
 
 ```bash
-make down
-docker volume rm airflow-dbt-duckdb_warehouse airflow-dbt-duckdb_postgres-db-volume
-make init && make up
-# Trigger the DAG — init_tpch will recreate ducklake_catalog and regenerate all data
+make rebuild
+```
+
+Runtime `pip install` into a running container won't survive a restart — always bake deps into the image.
+
+### Changing the TPC-H Data Volume
+
+Edit `.env`:
+
+```
+TPCH_SCALE_FACTOR=3   # 3 GB
+```
+
+Then reset and reload:
+
+```bash
+make deep-clean
+make bootstrap
+```
+
+`deep-clean` is required because `init_tpch` is idempotent — it skips generation if tables already exist.
+
+### Resetting the Lakehouse
+
+```bash
+make deep-clean       # wipes all containers, volumes, and the built image
+make bootstrap        # fresh start: init + build + start + trigger pipeline
 ```
 
 ---
@@ -244,19 +316,25 @@ The `generate_schema_name` macro (`dbt/macros/`) ensures models land in `lakehou
 ### `make dbt-run` fails with "Cascade Drop not supported in DuckLake"
 The `drop_relation` macro (`dbt/macros/`) handles this. If you're seeing it, check that the macro file is present and that Docker has the latest volume-mounted `dbt/` directory.
 
+### `ducklake-metrics` reports "relation ducklake_snapshot does not exist"
+The DuckLake catalog hasn't been initialised yet. Run `make pipeline-run` and wait for the DAG to complete (~5-10 min).
+
 ### Airflow won't start
 ```bash
-make logs          # check for startup errors
-make clean         # wipe volumes
-make init && make up
+make logs-scheduler   # check for startup errors
+make deep-clean
+make bootstrap
 ```
+
+### Grafana dashboard shows no data
+Check that the pipeline has run at least once (`make pipeline-run`). The "Airflow Pipeline Observability" dashboard queries the Airflow PostgreSQL database — data only appears after DAG runs exist.
 
 ---
 
 ## Production Notes
 
 - **DuckLake concurrency**: the PostgreSQL catalog supports multiple concurrent clients. dbt models run in parallel (4 threads on `dev`, 8 on `prod`). Each Cosmos task gets its own in-memory DuckDB connection (`:memory:`) and attaches the shared PostgreSQL catalog.
-- **Scaling data volume**: change `SCALE_FACTOR` in `scripts/init_tpch.py` (sf=10 ≈ 10 GB). Wipe the warehouse volume and the postgres volume first so `init_tpch` re-runs.
+- **Scaling data volume**: set `TPCH_SCALE_FACTOR` in `.env` (sf=10 ≈ 10 GB), then `make deep-clean && make bootstrap`.
 - **Airflow executor**: LocalExecutor is used here. Parallel dbt models already run within each Airflow task via dbt threads. For full Airflow-level parallelism across DAG tasks, switch to CeleryExecutor or KubernetesExecutor.
 - **Backups**: back up the `ducklake_catalog` PostgreSQL database and the `/opt/warehouse/data/` Parquet files together — they are not independent.
 
