@@ -12,15 +12,13 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: '120'
-    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     # Allow up to 5 min without a heartbeat before killing a task (default 30s is too short
     # for the 1 GB TPC-H dbgen call which saturates CPU/memory and causes transient DNS blips)
     AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD: '300'
     # Suppress openlineage warning — not using this integration
     AIRFLOW__OPENLINEAGE__DISABLED: 'true'
-    # Use memory:// URI to satisfy flask-limiter and silence the warning
-    RATELIMIT_STORAGE_URI: 'memory://'
     # DuckLake catalog: PostgreSQL as the metadata store (supports multiple concurrent clients)
     DUCKLAKE_CATALOG_CONN: "postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow"
     # Parquet data files are stored here inside the shared warehouse volume
