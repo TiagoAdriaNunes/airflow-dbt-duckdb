@@ -65,7 +65,8 @@ services:
     restart: always
 
   grafana:
-    image: grafana/grafana:11.1.0
+    image: grafana/grafana:13.0.2
+    platform: linux/amd64
     ports:
       - "3000:3000"
     environment:
@@ -82,7 +83,7 @@ services:
     restart: always
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.103.0
+    image: otel/opentelemetry-collector-contrib:0.154.0
     group_add:
       - "995"   # docker group GID — grants access to /var/run/docker.sock
     volumes:
@@ -95,7 +96,8 @@ services:
     restart: always
 
   prometheus:
-    image: prom/prometheus:v2.53.0
+    image: prom/prometheus:v3.12.0
+    user: "65534:65534"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
