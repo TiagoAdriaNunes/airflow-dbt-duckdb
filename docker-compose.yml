@@ -111,6 +111,16 @@ services:
       - otel-collector
     restart: always
 
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.57.0
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    restart: always
+
   ducklake-metrics:
     build:
       context: .
