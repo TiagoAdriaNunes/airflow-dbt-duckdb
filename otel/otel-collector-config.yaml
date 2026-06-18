@@ -6,17 +6,6 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-  docker_stats:
-    endpoint: unix:///var/run/docker.sock
-    api_version: "1.44"
-    collection_interval: 15s
-    timeout: 20s
-    metrics:
-      container.cpu.utilization:
-        enabled: true
-      container.cpu.usage.total:
-        enabled: false
-
 processors:
   batch:
     timeout: 10s
@@ -32,6 +21,6 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [otlp, docker_stats]
+      receivers: [otlp]
       processors: [batch]
       exporters: [prometheus, debug]
