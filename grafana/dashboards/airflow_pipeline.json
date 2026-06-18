@@ -9,7 +9,7 @@
   "id": null,
   "panels": [
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -25,10 +25,10 @@
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
       "id": 1,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT COUNT(*) AS \"Total Runs\" FROM dag_run WHERE execution_date >= NOW() - INTERVAL '7 days'",
@@ -39,7 +39,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -54,10 +54,10 @@
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
       "id": 2,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT COUNT(*) AS \"Successful\" FROM dag_run WHERE state = 'success' AND execution_date >= NOW() - INTERVAL '7 days'",
@@ -68,7 +68,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -86,10 +86,10 @@
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
       "id": 3,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT COUNT(*) AS \"Failed\" FROM dag_run WHERE state = 'failed' AND execution_date >= NOW() - INTERVAL '7 days'",
@@ -100,7 +100,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -119,10 +119,10 @@
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
       "id": 4,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT ROUND(100.0 * SUM(CASE WHEN state = 'success' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS \"Success Rate\" FROM dag_run WHERE execution_date >= NOW() - INTERVAL '7 days' AND state IN ('success','failed')",
@@ -133,7 +133,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -148,10 +148,10 @@
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
       "id": 5,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT ROUND(AVG(EXTRACT(EPOCH FROM (end_date - start_date)))::numeric, 1) AS \"Avg Duration\" FROM dag_run WHERE state = 'success' AND end_date IS NOT NULL AND execution_date >= NOW() - INTERVAL '7 days'",
@@ -162,7 +162,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -177,10 +177,10 @@
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
       "id": 6,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT COUNT(DISTINCT dag_id) AS \"Active DAGs\" FROM dag_run WHERE execution_date >= NOW() - INTERVAL '7 days'",
@@ -191,7 +191,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -203,10 +203,10 @@
       "gridPos": { "h": 9, "w": 16, "x": 0, "y": 4 },
       "id": 7,
       "options": { "legend": { "calcs": ["sum"], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "time_series",
           "rawQuery": true,
           "rawSql": "SELECT date_trunc('hour', execution_date) AS time, COUNT(*) FILTER (WHERE state = 'success') AS success, COUNT(*) FILTER (WHERE state = 'failed') AS failed, COUNT(*) FILTER (WHERE state = 'running') AS running FROM dag_run WHERE $__timeFilter(execution_date) GROUP BY 1 ORDER BY 1",
@@ -217,7 +217,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
         "overrides": []
@@ -225,10 +225,10 @@
       "gridPos": { "h": 9, "w": 8, "x": 16, "y": 4 },
       "id": 8,
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "pieType": "pie", "tooltip": { "mode": "single", "sort": "none" } },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT state, COUNT(*) AS count FROM dag_run WHERE execution_date >= NOW() - INTERVAL '7 days' GROUP BY state",
@@ -239,7 +239,7 @@
       "type": "piechart"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -251,10 +251,10 @@
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 13 },
       "id": 9,
       "options": { "barRadius": 0.05, "barWidth": 0.7, "groupWidth": 0.7, "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "orientation": "horizontal", "tooltip": { "mode": "single", "sort": "none" }, "xTickLabelRotation": 0, "xTickLabelSpacing": 200 },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT state, COUNT(*) AS count FROM task_instance WHERE start_date >= NOW() - INTERVAL '7 days' GROUP BY state ORDER BY count DESC",
@@ -265,7 +265,7 @@
       "type": "barchart"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": { "align": "left", "displayMode": "auto" } },
         "overrides": [
@@ -276,10 +276,10 @@
       "gridPos": { "h": 8, "w": 16, "x": 8, "y": 13 },
       "id": 10,
       "options": { "footer": { "enablePagination": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "execution_date" }] },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT dag_id, state, execution_date, ROUND(EXTRACT(EPOCH FROM (end_date - start_date))::numeric, 1) AS duration_s FROM dag_run ORDER BY execution_date DESC LIMIT 20",
@@ -290,7 +290,7 @@
       "type": "table"
     },
     {
-      "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": { "align": "left", "displayMode": "auto" } },
         "overrides": [
@@ -301,10 +301,10 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
       "id": 11,
       "options": { "footer": { "enablePagination": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "duration_s" }] },
-      "pluginVersion": "11.1.0",
+      "pluginVersion": "13.0.2",
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "airflow-postgres" },
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "airflow-postgres" },
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT dag_id, task_id, state, ROUND(duration::numeric, 1) AS duration_s, start_date FROM task_instance WHERE duration IS NOT NULL AND start_date >= NOW() - INTERVAL '7 days' ORDER BY duration DESC LIMIT 20",
