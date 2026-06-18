@@ -18,22 +18,29 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[0;32m%-15s\033[0m %s\n", $$1, $$2}'
 
 bootstrap: check-docker ## First-time setup: init Airflow, build images, start all services, run pipeline
-	@printf "$(YELLOW)=== Step 1/4: Initializing Airflow ===$(NC)\n"
+	@printf "$(YELLOW)=== Step 1/5: Building Airflow image ===$(NC)\n"
+	DOCKER_BUILDKIT=1 docker compose build airflow-webserver
+	@printf "$(YELLOW)=== Step 2/5: Initializing Airflow ===$(NC)\n"
 	$(MAKE) init
-	@printf "$(YELLOW)=== Step 2/4: Building ducklake-metrics image ===$(NC)\n"
+	@printf "$(YELLOW)=== Step 3/5: Building ducklake-metrics image ===$(NC)\n"
 	@if docker image inspect airflow-dbt-duckdb-ducklake-metrics:latest > /dev/null 2>&1; then \
 		printf "$(GREEN)Image already exists, skipping build$(NC)\n"; \
 	else \
 		DOCKER_BUILDKIT=1 docker compose build ducklake-metrics; \
 	fi
-	@printf "$(YELLOW)=== Step 3/4: Starting all services ===$(NC)\n"
+	@printf "$(YELLOW)=== Step 4/5: Starting all services ===$(NC)\n"
 	docker compose up -d airflow-webserver airflow-scheduler grafana otel-collector prometheus ducklake-metrics cadvisor
 	@printf "$(YELLOW)Waiting for Airflow webserver to be ready...$(NC)\n"
 	@until curl -sf http://localhost:8080/health > /dev/null 2>&1; do \
 		printf "  still starting, retrying in 5s...\n"; sleep 5; \
 	done
 	@printf "$(GREEN)Airflow is ready!$(NC)\n"
-	@printf "$(YELLOW)=== Step 4/4: Triggering dbt_analytics_pipeline ===$(NC)\n"
+	@printf "$(YELLOW)Waiting for dbt_analytics_pipeline DAG to be discovered...$(NC)\n"
+	@until docker compose exec -T airflow-webserver airflow dags list 2>/dev/null | grep -q dbt_analytics_pipeline; do \
+		printf "  waiting for DAG discovery, retrying in 5s...\n"; sleep 5; \
+	done
+	@printf "$(GREEN)DAG discovered!$(NC)\n"
+	@printf "$(YELLOW)=== Step 5/5: Triggering dbt_analytics_pipeline ===$(NC)\n"
 	$(MAKE) pipeline-run
 	@printf "$(GREEN)=== Bootstrap complete! ===$(NC)\n"
 	@printf "$(GREEN)Airflow:    http://localhost:8080  (airflow / airflow)$(NC)\n"
