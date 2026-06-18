@@ -1,4 +1,4 @@
-FROM apache/airflow:3.0.0-python3.11
+FROM apache/airflow:3.1.0-python3.11
 
 USER root
 
@@ -20,7 +20,7 @@ RUN apt-get update && \
 ENV UV_LINK_MODE=copy
 
 # Install dbt in an isolated venv to avoid the protobuf conflict:
-# opentelemetry-proto (Airflow 2.10.4) pins protobuf<5; dbt-core>=1.9 requires protobuf>=5.
+# opentelemetry-proto pins protobuf<5; dbt-core>=1.9 requires protobuf>=5.
 # Cosmos calls dbt as a subprocess via dbt_executable_path — no Python-level conflict.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /opt/dbt-venv && \
