@@ -2,7 +2,7 @@
   "__inputs": [],
   "__requires": [],
   "annotations": { "list": [] },
-  "description": "Docker container resources via OpenTelemetry docker_stats receiver — CPU, memory, network, disk I/O",
+  "description": "Docker container resources via cAdvisor — CPU, memory, network, disk I/O",
   "editable": true,
   "graphTooltip": 1,
   "id": null,
@@ -23,8 +23,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "container_memory_usage_total_bytes",
-          "legendFormat": "{{container_name}}",
+          "expr": "sum by (name) (container_memory_working_set_bytes{name=~\".+\"})",
+          "legendFormat": "{{ name }}",
           "refId": "A"
         }
       ],
@@ -37,7 +37,8 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "drawStyle": "line", "fillOpacity": 15, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": false },
-          "unit": "percentunit"
+          "unit": "percent",
+          "min": 0
         },
         "overrides": []
       },
@@ -47,12 +48,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "container_cpu_utilization_ratio",
-          "legendFormat": "{{container_name}}",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\".+\"}[2m])) * 100",
+          "legendFormat": "{{ name }}",
           "refId": "A"
         }
       ],
-      "title": "CPU Utilization per Container",
+      "title": "CPU Usage per Container (% of 1 core)",
       "type": "timeseries"
     },
     {
@@ -87,9 +88,9 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "container_memory_usage_total_bytes",
+          "expr": "sum by (name) (container_memory_working_set_bytes{name=~\".+\"})",
           "instant": true,
-          "legendFormat": "{{container_name}}",
+          "legendFormat": "{{ name }}",
           "refId": "A",
           "format": "table"
         }
@@ -117,14 +118,14 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_network_io_usage_rx_bytes_total[2m])",
-          "legendFormat": "{{container_name}} rx",
+          "expr": "rate(container_network_receive_bytes_total{name=~\".+\"}[2m])",
+          "legendFormat": "{{ name }} rx",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_network_io_usage_tx_bytes_total[2m])",
-          "legendFormat": "{{container_name}} tx",
+          "expr": "rate(container_network_transmit_bytes_total{name=~\".+\"}[2m])",
+          "legendFormat": "{{ name }} tx",
           "refId": "B"
         }
       ],
@@ -147,19 +148,65 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_blockio_io_service_bytes_recursive_total{operation=\"read\"}[2m])",
-          "legendFormat": "{{container_name}} read",
+          "expr": "rate(container_fs_reads_bytes_total{name=~\".+\"}[2m])",
+          "legendFormat": "{{ name }} read",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_blockio_io_service_bytes_recursive_total{operation=\"write\"}[2m])",
-          "legendFormat": "{{container_name}} write",
+          "expr": "rate(container_fs_writes_bytes_total{name=~\".+\"}[2m])",
+          "legendFormat": "{{ name }} write",
           "refId": "B"
         }
       ],
       "title": "Disk I/O per Container (read / write throughput)",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 1.0 }
+            ]
+          },
+          "unit": "percent",
+          "custom": { "align": "left", "displayMode": "auto" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "CPU %" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "lcd-gauge" },
+              { "id": "max", "value": 100 }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 27 },
+      "id": 6,
+      "options": { "footer": { "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "CPU %" }] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\".+\"}[2m])) * 100",
+          "instant": true,
+          "legendFormat": "{{ name }}",
+          "refId": "A",
+          "format": "table"
+        }
+      ],
+      "title": "Current CPU — Ranked",
+      "transformations": [
+        { "id": "reduce", "options": { "reducers": ["last"] } },
+        { "id": "organize", "options": { "renameByName": { "Field": "Container", "Last": "CPU %" } } }
+      ],
+      "type": "table"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -173,74 +220,28 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 27 },
-      "id": 6,
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 27 },
+      "id": 7,
       "options": { "legend": { "calcs": ["last", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "container_memory_percent_ratio",
-          "legendFormat": "{{container_name}}",
+          "expr": "container_memory_working_set_bytes{name=~\".+\", container_spec_memory_limit_bytes > 0} / container_spec_memory_limit_bytes{name=~\".+\", container_spec_memory_limit_bytes > 0}",
+          "legendFormat": "{{ name }}",
           "refId": "A"
         }
       ],
-      "title": "Memory % of Host Limit per Container",
+      "title": "Memory % of Limit per Container",
       "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.5 },
-              { "color": "red", "value": 0.8 }
-            ]
-          },
-          "unit": "percentunit",
-          "custom": { "align": "left", "displayMode": "auto" }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "CPU %" },
-            "properties": [
-              { "id": "custom.displayMode", "value": "lcd-gauge" },
-              { "id": "max", "value": 1 }
-            ]
-          }
-        ]
-      },
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 27 },
-      "id": 7,
-      "options": { "footer": { "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "CPU %" }] },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "container_cpu_utilization_ratio",
-          "instant": true,
-          "legendFormat": "{{container_name}}",
-          "refId": "A",
-          "format": "table"
-        }
-      ],
-      "title": "Current CPU — Ranked",
-      "transformations": [
-        { "id": "reduce", "options": { "reducers": ["last"] } },
-        { "id": "organize", "options": { "renameByName": { "Field": "Container", "Last": "CPU %" } } }
-      ],
-      "type": "table"
     }
   ],
   "refresh": "15s",
   "schemaVersion": 39,
-  "tags": ["docker", "opentelemetry", "resources"],
+  "tags": ["docker", "cadvisor", "resources"],
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
   "title": "Container Resources",
   "uid": "container-resources",
-  "version": 4
+  "version": 5
 }

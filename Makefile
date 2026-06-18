@@ -1,4 +1,4 @@
-.PHONY: help check-docker bootstrap init up down restart logs logs-airflow logs-scheduler clean deep-clean dbt-deps dbt-debug dbt-run dbt-test dbt-seed dbt-build dbt-docs-generate dbt-docs-serve lh-cli lh-query lh-tables lh-orders lh-stats lh-recent lh-revenue obs-build obs-up obs-down obs-logs obs-status logs-grafana logs-prometheus logs-otel logs-metrics pipeline-run airflow-cli ps rebuild rebuild-clean
+.PHONY: help check-docker bootstrap init up down restart logs logs-airflow logs-scheduler clean deep-clean dbt-deps dbt-debug dbt-run dbt-test dbt-seed dbt-build dbt-docs-generate dbt-docs-serve lh-cli lh-query lh-tables lh-orders lh-stats lh-recent lh-revenue obs-build obs-up obs-down obs-logs obs-status logs-grafana logs-prometheus logs-otel logs-metrics logs-cadvisor pipeline-run airflow-cli ps rebuild rebuild-clean
 
 # Default target
 .DEFAULT_GOAL := help
@@ -27,7 +27,7 @@ bootstrap: check-docker ## First-time setup: init Airflow, build images, start a
 		DOCKER_BUILDKIT=1 docker compose build ducklake-metrics; \
 	fi
 	@printf "$(YELLOW)=== Step 3/4: Starting all services ===$(NC)\n"
-	docker compose up -d airflow-webserver airflow-scheduler grafana otel-collector prometheus ducklake-metrics
+	docker compose up -d airflow-webserver airflow-scheduler grafana otel-collector prometheus ducklake-metrics cadvisor
 	@printf "$(YELLOW)Waiting for Airflow webserver to be ready...$(NC)\n"
 	@until curl -sf http://localhost:8080/health > /dev/null 2>&1; do \
 		printf "  still starting, retrying in 5s...\n"; sleep 5; \
@@ -50,7 +50,7 @@ init: check-docker ## Initialize Airflow (run once before first start)
 
 up: check-docker obs-build ## Start all services (Airflow + full observability stack)
 	@printf "$(YELLOW)Starting services...$(NC)\n"
-	docker compose up -d airflow-webserver airflow-scheduler grafana otel-collector prometheus ducklake-metrics
+	docker compose up -d airflow-webserver airflow-scheduler grafana otel-collector prometheus ducklake-metrics cadvisor
 	@printf "$(GREEN)Airflow:    http://localhost:8080  (airflow / airflow)$(NC)\n"
 	@printf "$(GREEN)Grafana:    http://localhost:3000  (admin / admin)$(NC)\n"
 	@printf "$(GREEN)Prometheus: http://localhost:9090$(NC)\n"
@@ -179,23 +179,26 @@ obs-build: check-docker ## Build the ducklake-metrics image (runs automatically 
 	DOCKER_BUILDKIT=1 docker compose build ducklake-metrics
 	@printf "$(GREEN)ducklake-metrics image ready$(NC)\n"
 
-obs-up: check-docker ## Start only the observability stack (Grafana + OTEL + Prometheus + ducklake-metrics)
+obs-up: check-docker ## Start only the observability stack (Grafana + OTEL + Prometheus + ducklake-metrics + cadvisor)
 	@printf "$(YELLOW)Starting observability stack...$(NC)\n"
-	docker compose up -d grafana otel-collector prometheus ducklake-metrics
+	docker compose up -d grafana otel-collector prometheus ducklake-metrics cadvisor
 	@printf "$(GREEN)Grafana:    http://localhost:3000  (admin / admin)$(NC)\n"
 	@printf "$(GREEN)Prometheus: http://localhost:9090$(NC)\n"
 
 obs-down: check-docker ## Stop only the observability services
 	@printf "$(YELLOW)Stopping observability stack...$(NC)\n"
-	docker compose stop grafana otel-collector prometheus ducklake-metrics
-	docker compose rm -f grafana otel-collector prometheus ducklake-metrics
+	docker compose stop grafana otel-collector prometheus ducklake-metrics cadvisor
+	docker compose rm -f grafana otel-collector prometheus ducklake-metrics cadvisor
 
 obs-logs: check-docker ## Tail logs from all observability services
-	docker compose logs -f grafana otel-collector prometheus ducklake-metrics
+	docker compose logs -f grafana otel-collector prometheus ducklake-metrics cadvisor
+
+logs-cadvisor: ## Tail cAdvisor logs
+	docker compose logs -f cadvisor
 
 obs-status: check-docker ## Show health of observability services and print first metric names
 	@printf "$(BLUE)── Container status ─────────────────────────────────────$(NC)\n"
-	@docker compose ps grafana otel-collector prometheus ducklake-metrics
+	@docker compose ps grafana otel-collector prometheus ducklake-metrics cadvisor
 	@printf "\n"
 	@printf "$(BLUE)── DuckLake metrics available in Prometheus ─────────────$(NC)\n"
 	@docker compose exec -T prometheus wget -qO- 'http://localhost:9090/api/v1/label/__name__/values' 2>/dev/null \
