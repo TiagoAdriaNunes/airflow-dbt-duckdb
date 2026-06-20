@@ -14,11 +14,12 @@ from airflow import DAG
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
 from cosmos import DbtTaskGroup, ExecutionConfig, ProfileConfig, ProjectConfig, RenderConfig
-from cosmos.constants import ExecutionMode, DbtResourceType
+from cosmos.constants import ExecutionMode, InvocationMode
 
 sys.path.insert(0, "/opt/airflow/scripts")
 
 DBT_PROJECT_PATH = Path("/opt/airflow/dbt")
+DBT_EXECUTABLE_PATH = Path("/opt/airflow/.venv/bin/dbt")
 
 profile_config = ProfileConfig(
     profile_name="analytics",
@@ -61,9 +62,11 @@ with DAG(
         profile_config=profile_config,
         execution_config=ExecutionConfig(
             execution_mode=ExecutionMode.LOCAL,
-            dbt_executable_path="/opt/dbt-venv/bin/dbt",
+            invocation_mode=InvocationMode.SUBPROCESS,
+            dbt_executable_path=DBT_EXECUTABLE_PATH,
         ),
         render_config=RenderConfig(
+            invocation_mode=InvocationMode.SUBPROCESS,
             select=["resource_type:model"],
         ),
     )

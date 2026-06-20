@@ -4,45 +4,40 @@ Get up and running with the Airflow + dbt + DuckDB stack in 5 minutes!
 
 ## Step-by-Step Setup
 
-### 1. Initialize the Environment
+### 1. Bootstrap the Stack
 
 ```bash
-# Create .env file
-make init
+make bootstrap
 ```
 
-This will:
-- Create necessary directories (logs, plugins, data)
-- Set up environment variables
-- Initialize the Airflow database
-- Create default admin user
+This single command handles everything for first-time setup:
+1. Initializes the Airflow database and creates an admin user
+2. Builds the `ducklake-metrics` Docker image (skipped if already built)
+3. Starts all services: Airflow, Grafana, Prometheus, OpenTelemetry Collector, cAdvisor
+4. Waits until Airflow is healthy
+5. Triggers the `dbt_analytics_pipeline` DAG automatically
 
-### 2. Start Services
-
-```bash
-make up
+Once complete you'll see:
+```
+=== Bootstrap complete! ===
+Airflow:    http://localhost:8080  (airflow / airflow)
+Grafana:    http://localhost:3000  (admin / admin)
 ```
 
-Wait about 30-60 seconds for services to start. You should see:
-```
-Services started! Access Airflow at http://localhost:8080
-Username: airflow | Password: airflow
-```
+### 2. Access the UIs
 
-### 3. Access Airflow UI
+| Service  | URL                      | Credentials       |
+|----------|--------------------------|-------------------|
+| Airflow  | http://localhost:8080    | airflow / airflow |
+| Grafana  | http://localhost:3000    | admin / admin     |
 
-Open your browser and navigate to: http://localhost:8080
+### 3. Monitor the Pipeline
 
-Login credentials:
-- **Username**: `airflow`
-- **Password**: `airflow`
+The pipeline was already triggered by `make bootstrap`. To watch it:
 
-### 4. Run Your First Pipeline
-
-1. In the Airflow UI, find the `dbt_analytics_pipeline` DAG
-2. Toggle the switch on the left to enable it (it starts paused)
-3. Click the play button (▶) on the right to trigger a manual run
-4. Watch the task progress in the Graph or Grid view
+1. Open the Airflow UI at http://localhost:8080
+2. Find the `dbt_analytics_pipeline` DAG
+3. Watch task progress in the Graph or Grid view
 
 ### 5. Explore the Results
 
@@ -77,6 +72,7 @@ Exit DuckDB CLI with `.quit`
 ## Common Commands
 
 ```bash
+make bootstrap         # First-time setup: init, build, start, run pipeline
 make help              # Show all available commands
 make logs              # View service logs
 make dbt-run           # Run dbt models manually
@@ -155,9 +151,8 @@ make logs  # Check for errors
 
 **Need to reset everything?**
 ```bash
-make clean  # Remove all containers and volumes
-make init   # Start fresh
-make up
+make clean      # Remove all containers and volumes
+make bootstrap  # Start fresh
 ```
 
 ## Learn More
