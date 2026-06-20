@@ -30,13 +30,13 @@ bootstrap: check-docker ## First-time setup: init Airflow, build images, start a
 	fi
 	@printf "$(YELLOW)=== Step 4/5: Starting all services ===$(NC)\n"
 	docker compose up -d airflow-webserver airflow-scheduler grafana otel-collector prometheus ducklake-metrics cadvisor
-	@printf "$(YELLOW)Waiting for Airflow webserver to be ready...$(NC)\n"
-	@until curl -sf http://localhost:8080/health > /dev/null 2>&1; do \
+	@printf "$(YELLOW)Waiting for Airflow api-server to be ready...$(NC)\n"
+	@until [ "$$(docker inspect --format='{{.State.Health.Status}}' $$(docker compose ps -q airflow-webserver) 2>/dev/null)" = "healthy" ]; do \
 		printf "  still starting, retrying in 5s...\n"; sleep 5; \
 	done
 	@printf "$(GREEN)Airflow is ready!$(NC)\n"
 	@printf "$(YELLOW)Waiting for dbt_analytics_pipeline DAG to be discovered...$(NC)\n"
-	@until docker compose exec -T airflow-webserver airflow dags list 2>/dev/null | grep -q dbt_analytics_pipeline; do \
+	@until docker compose exec -T airflow-scheduler airflow dags list 2>/dev/null | grep -q dbt_analytics_pipeline; do \
 		printf "  waiting for DAG discovery, retrying in 5s...\n"; sleep 5; \
 	done
 	@printf "$(GREEN)DAG discovered!$(NC)\n"
@@ -92,7 +92,7 @@ deep-clean: check-docker ## Nuclear option: remove containers, volumes, built im
 	@printf "$(GREEN)Deep clean complete. Run 'make init && make up' to start fresh.$(NC)\n"
 
 DBT_DIR := /opt/airflow/dbt
-DBT_BIN := /opt/dbt-venv/bin/dbt
+DBT_BIN := dbt
 DBT_ENV := DBT_PROFILES_DIR=$(DBT_DIR) DBT_TARGET=dev
 
 DUCKLAKE_CATALOG_CONN := postgres:dbname=ducklake_catalog host=postgres user=airflow password=airflow

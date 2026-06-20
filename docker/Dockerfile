@@ -1,4 +1,4 @@
-FROM apache/airflow:3.1.0-python3.11
+FROM apache/airflow:3.2.2-python3.11
 
 USER root
 
@@ -19,20 +19,19 @@ RUN apt-get update && \
 
 ENV UV_LINK_MODE=copy
 
-# Install dbt in an isolated venv to avoid the protobuf conflict:
-# opentelemetry-proto pins protobuf<5; dbt-core>=1.9 requires protobuf>=5.
-# Cosmos calls dbt as a subprocess via dbt_executable_path — no Python-level conflict.
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv venv /opt/dbt-venv && \
-    uv pip install --python /opt/dbt-venv/bin/python \
-        "dbt-duckdb==1.10.1" \
-        "dbt-core==1.10.11" \
-        "dbt-adapters==1.16.6" \
-        "dbt-common==1.29.0" && \
-    chmod -R a+rx /opt/dbt-venv
-
 USER airflow
 
-COPY docker/requirements.txt /opt/airflow/requirements.txt
-RUN --mount=type=cache,target=/home/airflow/.cache/pip \
-    pip install -r /opt/airflow/requirements.txt
+COPY pyproject.toml uv.lock /opt/airflow/
+# Build an isolated venv for extras (cosmos, dbt). Append it to sys.path via .pth
+# so the base image's airflow/structlog always take precedence over the venv's copies.
+RUN --mount=type=cache,target=/home/airflow/.cache/uv \
+    UV_PYTHON_DOWNLOADS=never \
+    uv sync --frozen --no-install-project --project /opt/airflow --python python3 && \
+    echo "/opt/airflow/.venv/lib/python3.11/site-packages" \
+        >> /home/airflow/.local/lib/python3.11/site-packages/airflow-extras.pth && \
+    ln -s /opt/airflow/.venv/bin/dbt /home/airflow/.local/bin/dbt
+
+# Base image ships protobuf 4.25.8 (uses old `including_default_value_fields` API).
+# dbt-core 1.10+ calls MessageToJson(always_print_fields_with_no_presence=...) — the 5.x API name.
+# Install 5.x to user site-packages (first in sys.path) to override the base image version.
+RUN pip install "protobuf>=5.27.2,<7" --quiet
