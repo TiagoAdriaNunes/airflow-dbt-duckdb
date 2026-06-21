@@ -6,10 +6,10 @@ A lightweight, fully containerised analytics stack: Apache Airflow orchestrates 
 
 | Tool | Version | Role |
 |------|---------|------|
-| Apache Airflow | 2.10 | Pipeline orchestration |
-| dbt | 1.9 | SQL transformations |
-| DuckDB + DuckLake | 1.3 | Analytical engine + open table format |
-| Astronomer Cosmos | latest | dbt ↔ Airflow integration |
+| Apache Airflow | 3.2.2 | Pipeline orchestration |
+| dbt | 1.10 | SQL transformations |
+| DuckDB + DuckLake | 1.5.4 | Analytical engine + open table format |
+| Astronomer Cosmos | 1.14.2 | dbt ↔ Airflow integration |
 | Grafana | 13.0.2 | Metrics dashboards |
 | Prometheus | v3.12.0 | Metrics storage |
 | OpenTelemetry Collector | 0.154.0 | Metrics pipeline |
